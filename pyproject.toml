@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aidecl"
+version = "0.1.0"
+description = "Declare and check AI generation (G0-G3) and verification (V0-V3) levels per file, REUSE-style."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Industrial Mathematics Group" }]
+dependencies = []
+
+[project.scripts]
+aidecl = "aidecl.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/industrial-mathematics-group/aidecl"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
