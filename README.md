@@ -1,5 +1,9 @@
 # aidecl
 
+![AI generation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/aidecl-generation.json)
+![Human review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/aidecl-human-review.json)
+![AI review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/aidecl-ai-review.json)
+
 **Declare and check how each file was created and reviewed**, using the Industrial Mathematics Group's AI levels:
 - **G0–G3:** how much an AI generated;
 - **H0–H3:** how thoroughly a human reviewed it;
