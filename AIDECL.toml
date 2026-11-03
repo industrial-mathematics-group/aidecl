@@ -1,12 +1,6 @@
 version = 2
 exclude = []
 
-# aidecl was written by an AI agent and reviewed by an independent agent session.
-# TODO (maintainer): after your own review, add your level and name to the annotation:
-#   Human-Review = "H0" | "H1" | "H2" | "H3"
-#   Reviewed-by = "Your Name"
-# Until then 'aidecl lint' (and the CI check) reports the missing human review on purpose.
-
 [[annotations]]
 path = "**"
 AI-Generation = "G3"
