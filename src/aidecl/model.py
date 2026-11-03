@@ -1,4 +1,4 @@
-"""The G/V declaration scheme: levels, keys and the completeness rules."""
+"""The G/H/A declaration scheme: levels, keys, policy and completeness rules."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,45 +9,112 @@ GENERATION = {
     "G2": "AI-generated",
     "G3": "AI-autonomous",
 }
-VERIFICATION = {
-    "V0": "Human",
-    "V1": "Independent agent, same model",
-    "V2": "Independent agent, different model",
-    "V3": "Human + independent agent",
+HUMAN = {
+    "H0": "Plausibility check",
+    "H1": "Tested",
+    "H2": "Reviewed line by line",
+    "H3": "Independently validated",
+}
+AI = {
+    "A-": "No AI review",
+    "A0": "Self-check by the generating session",
+    "A1": "Independent session, same model",
+    "A2": "Independent session, different model",
+    "A3": "Different model with full benchmark",
 }
 
 # Canonical key names. They are identical to the git trailers used in pull requests.
-GEN, VER, ASSISTED, VERIFIED, TESTED = (
-    "AI-Generation",
-    "AI-Verification",
-    "Assisted-by",
-    "Verified-by",
-    "Tested-by",
-)
-SINGLE_KEYS = (GEN, VER)
-LIST_KEYS = (ASSISTED, VERIFIED, TESTED)
-KEYS = SINGLE_KEYS + LIST_KEYS
+GEN, HUM, AIR = "AI-Generation", "Human-Review", "AI-Review"
+ASSISTED, AI_REVIEWED, REVIEWED = "Assisted-by", "AI-Reviewed-by", "Reviewed-by"
+LEVEL_KEYS = (GEN, HUM, AIR)
+LIST_KEYS = (ASSISTED, AI_REVIEWED, REVIEWED)
+KEYS = LEVEL_KEYS + LIST_KEYS
+LEVELS = {GEN: GENERATION, HUM: HUMAN, AIR: AI}
+
+# The three axes: each level key together with the list key that names who/what did it.
+AXES = ((GEN, ASSISTED), (HUM, REVIEWED), (AIR, AI_REVIEWED))
+
+# Keys of the first version of the scheme (V0-V3), recognised for migration only.
+LEGACY_KEYS = ("AI-Verification", "Verified-by", "Tested-by")
+
+ORDER = {k: i for i, k in enumerate([*HUMAN, *AI])}  # H0<H1<..., A-<A0<A1<...
+
+# Placeholder written by 'aidecl migrate' where the old levels carry no information.
+# It blocks the per-axis fallback to AIDECL.toml and fails lint until a person fills it in.
+TODO = "TODO"
 
 
-def canonical_key(name: str) -> str | None:
+def canonical_key(name: str, keys=KEYS) -> str | None:
     """Return the canonical spelling of a declaration key (case-insensitive), or None."""
-    for key in KEYS:
+    for key in keys:
         if key.lower() == name.strip().lower():
             return key
     return None
 
 
+def at_least(level: str, minimum: str) -> bool:
+    return ORDER[level] >= ORDER[minimum]
+
+
+# ------------------------------------------------------------------ policy
+BUILTIN_MIN_AI_FOR_GENERATED = "A0"  # G1-G3 need at least a self-check by the AI
+
+
+@dataclass(frozen=True)
+class Policy:
+    """Minimum review levels, per generation level ("*" = default for all)."""
+
+    rules: dict = field(default_factory=dict)  # {"*"|"G0".."G3": {"human": "H1", "ai": "A0"}}
+
+    def minimum(self, generation: str | None) -> tuple[str | None, str | None]:
+        merged = dict(self.rules.get("*", {}))
+        if generation:
+            merged.update(self.rules.get(generation, {}))
+        human, ai = merged.get("human"), merged.get("ai")
+        if generation in ("G1", "G2", "G3") and (ai is None or not at_least(ai, BUILTIN_MIN_AI_FOR_GENERATED)):
+            ai = BUILTIN_MIN_AI_FOR_GENERATED
+        return human, ai
+
+
+def parse_policy(data, where: str = "policy") -> Policy:
+    """Validate a [policy] table; raises ValueError with a readable message."""
+    if data is None:
+        return Policy()
+    if not isinstance(data, dict):
+        raise ValueError(f"{where} must be a table")
+    rules = {}
+    for gen, req in data.items():
+        if gen != "*" and gen not in GENERATION:
+            raise ValueError(f"{where}: unknown key '{gen}' (use \"*\", G0, G1, G2 or G3)")
+        if not isinstance(req, dict):
+            raise ValueError(f"{where}.{gen} must be a table like {{ human = \"H1\", ai = \"A0\" }}")
+        unknown = set(req) - {"human", "ai"}
+        if unknown:
+            raise ValueError(f"{where}.{gen}: unknown key(s) {', '.join(sorted(unknown))} (use human, ai)")
+        if "human" in req and (not isinstance(req["human"], str) or req["human"] not in HUMAN):
+            raise ValueError(f"{where}.{gen}.human must be one of {', '.join(HUMAN)}")
+        if "ai" in req and (not isinstance(req["ai"], str) or req["ai"] not in AI):
+            raise ValueError(f"{where}.{gen}.ai must be one of {', '.join(AI)}")
+        rules[gen] = dict(req)
+    return Policy(rules)
+
+
+# ------------------------------------------------------------------ declarations
 @dataclass
 class Declaration:
-    """The resolved declaration of one file."""
+    """The resolved declaration of one file or change."""
 
     generation: str | None = None
-    verification: str | None = None
+    human: str | None = None
+    ai: str | None = None
     assisted_by: tuple[str, ...] = ()
-    verified_by: tuple[str, ...] = ()
-    tested_by: tuple[str, ...] = ()
+    reviewed_by: tuple[str, ...] = ()
+    ai_reviewed_by: tuple[str, ...] = ()
     source: str = "none"  # e.g. 'AIDECL.toml [2]', 'inline', 'none'
     problems: list[str] = field(default_factory=list)  # parse problems found while reading it
+
+    _FIELDS = {GEN: "generation", HUM: "human", AIR: "ai",
+               ASSISTED: "assisted_by", REVIEWED: "reviewed_by", AI_REVIEWED: "ai_reviewed_by"}
 
     @classmethod
     def from_mapping(cls, values: dict, source: str) -> "Declaration":
@@ -56,48 +123,66 @@ class Declaration:
                 return ()
             if isinstance(v, str):
                 v = [v]
-            return tuple(s.strip() for s in v if str(s).strip())
+            return tuple(str(s).strip() for s in v if str(s).strip())
 
-        return cls(
-            generation=(values.get(GEN) or None),
-            verification=(values.get(VER) or None),
-            assisted_by=as_tuple(values.get(ASSISTED)),
-            verified_by=as_tuple(values.get(VERIFIED)),
-            tested_by=as_tuple(values.get(TESTED)),
-            source=source,
-        )
+        kwargs = {}
+        for key, attr in cls._FIELDS.items():
+            v = values.get(key)
+            kwargs[attr] = as_tuple(v) if key in LIST_KEYS else (v or None)
+        return cls(**kwargs, source=source)
+
+    def get(self, key: str):
+        return getattr(self, self._FIELDS[key])
 
     def as_dict(self) -> dict:
-        return {
-            GEN: self.generation,
-            VER: self.verification,
-            ASSISTED: list(self.assisted_by),
-            VERIFIED: list(self.verified_by),
-            TESTED: list(self.tested_by),
-            "source": self.source,
-        }
+        out = {}
+        for key in KEYS:
+            v = self.get(key)
+            out[key] = list(v) if key in LIST_KEYS else v
+        out["source"] = self.source
+        return out
+
+    def short(self) -> str:
+        return " ".join(v or "--" for v in (self.generation, self.human, self.ai))
 
 
-def validate(d: Declaration) -> list[str]:
+def validate(d: Declaration, policy: Policy | None = None) -> list[str]:
     """Return the rule violations of a declaration (empty list = valid)."""
-    errors = list(d.problems)
     if d.source == "none":
         return ["no declaration (not matched by AIDECL.toml and no inline tags)"]
-    if d.generation is None:
-        errors.append(f"missing {GEN}")
-    elif d.generation not in GENERATION:
-        errors.append(f"invalid {GEN} '{d.generation}' (use G0, G1, G2 or G3)")
-    if d.verification is None:
-        errors.append(f"missing {VER}")
-    elif d.verification not in VERIFICATION:
-        errors.append(f"invalid {VER} '{d.verification}' (use V0, V1, V2 or V3)")
+    errors = list(d.problems)
+    for key in KEYS:
+        v = d.get(key)
+        if v == TODO or (key in LIST_KEYS and TODO in v):
+            errors.append(f"{key} is still TODO (left by 'aidecl migrate')")
+    for key in LEVEL_KEYS:
+        v = d.get(key)
+        if v == TODO:
+            continue
+        if v is None:
+            errors.append(f"missing {key}")
+        elif v not in LEVELS[key]:
+            errors.append(f"invalid {key} '{v}' (use {', '.join(LEVELS[key])})")
 
-    if d.generation in ("G1", "G2", "G3") and not d.assisted_by:
-        errors.append(f"{d.generation} needs {ASSISTED} (tool and model)")
-    if d.generation == "G0" and d.assisted_by:
+    g, h, a = d.generation, d.human, d.ai
+    if TODO in (g, h, a) or any(TODO in d.get(k) for k in LIST_KEYS):
+        return errors
+    if g in ("G1", "G2", "G3") and not d.assisted_by:
+        errors.append(f"{g} needs {ASSISTED} (tool and model)")
+    if g == "G0" and d.assisted_by:
         errors.append(f"G0 means no AI was used, but {ASSISTED} is set")
-    if d.verification in ("V1", "V2", "V3") and not d.verified_by:
-        errors.append(f"{d.verification} needs {VERIFIED} (verifying model and session)")
-    if d.verification in ("V0", "V3") and not d.tested_by:
-        errors.append(f"{d.verification} needs {TESTED} (the human who tested)")
+    if h in HUMAN and not d.reviewed_by:
+        errors.append(f"{HUM} needs {REVIEWED} (the responsible human)")
+    if a in ("A0", "A1", "A2", "A3") and not d.ai_reviewed_by:
+        errors.append(f"{a} needs {AI_REVIEWED} (reviewing model and session)")
+    if a == "A-" and d.ai_reviewed_by:
+        errors.append(f"A- means no AI review, but {AI_REVIEWED} is set")
+
+    if g in GENERATION and (h is None or h in HUMAN) and (a is None or a in AI):
+        min_h, min_a = (policy or Policy()).minimum(g)
+        if min_h and h and not at_least(h, min_h):
+            errors.append(f"{g} requires at least {min_h} by policy (declared {h})")
+        if min_a and a and not at_least(a, min_a):
+            reason = "AI-written content must at least be self-checked" if min_a == "A0" else "by policy"
+            errors.append(f"{g} requires at least {min_a} ({reason}; declared {a})")
     return errors

@@ -2,15 +2,20 @@
 
 Format::
 
-    version = 1
+    version = 2
     exclude = ["docs/build/**"]          # optional: files that need no declaration
+
+    [policy]                             # optional: minimum review levels per generation level
+    "*" = { human = "H1" }
+    G3  = { human = "H2", ai = "A1" }
 
     [[annotations]]
     path = "**"                          # one pattern or a list of patterns
     precedence = "closest"               # optional: "closest" (default) or "override"
     AI-Generation = "G0"
-    AI-Verification = "V0"
-    Tested-by = "Jane Doe"               # string or list of strings
+    Human-Review = "H2"
+    AI-Review = "A-"
+    Reviewed-by = "Jane Doe"             # string or list of strings
 """
 from __future__ import annotations
 
@@ -19,14 +24,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .globbing import compile_glob, matches
-from .model import GENERATION, KEYS, LIST_KEYS, VERIFICATION, Declaration, canonical_key, GEN, VER
+from .model import KEYS, LEVELS, LIST_KEYS, Declaration, Policy, canonical_key, parse_policy
 
 FILENAME = "AIDECL.toml"
+VERSION = 2
 PRECEDENCES = ("closest", "override")
 
 
 class ConfigError(Exception):
     pass
+
+
+class LegacyConfig(ConfigError):
+    """AIDECL.toml still uses version 1 (V0-V3 levels)."""
 
 
 @dataclass
@@ -48,6 +58,7 @@ class Config:
     path: Path | None
     annotations: list[Annotation] = field(default_factory=list)
     exclude: tuple[str, ...] = ()
+    policy: Policy = field(default_factory=Policy)
 
     def is_excluded(self, path: str) -> bool:
         return any(matches(p, path) for p in self.exclude)
@@ -69,23 +80,38 @@ def _str_list(value, what: str) -> tuple[str, ...]:
     return tuple(value)
 
 
-def load(root: Path) -> Config:
+def read_toml(root: Path) -> dict | None:
     path = root / FILENAME
     if not path.exists():
-        return Config(path=None)
+        return None
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        return tomllib.loads(path.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"{FILENAME}: invalid TOML: {e}") from e
 
-    unknown = set(data) - {"version", "exclude", "annotations"}
+
+def load(root: Path) -> Config:
+    data = read_toml(root)
+    if data is None:
+        return Config(path=None)
+    path = root / FILENAME
+
+    version = data.get("version")
+    if type(version) is int and version == 1:
+        raise LegacyConfig(f"{FILENAME} uses version 1 (V0-V3 levels). Run 'aidecl migrate' to convert "
+                           "it to the G/H/A levels of version 2.")
+    if type(version) is not int or version != VERSION:
+        raise ConfigError(f"{FILENAME}: 'version = {VERSION}' is required")
+    unknown = set(data) - {"version", "exclude", "policy", "annotations"}
     if unknown:
         raise ConfigError(f"{FILENAME}: unknown top-level key(s): {', '.join(sorted(unknown))}")
-    if type(data.get("version")) is not int or data["version"] != 1:
-        raise ConfigError(f"{FILENAME}: 'version = 1' is required")
     exclude = _str_list(data.get("exclude", []), f"{FILENAME}: 'exclude'")
     for p in exclude:
         compile_glob(p)
+    try:
+        policy = parse_policy(data.get("policy"), where=f"{FILENAME} [policy]")
+    except ValueError as e:
+        raise ConfigError(str(e)) from e
 
     annotations = []
     raw = data.get("annotations", [])
@@ -115,9 +141,8 @@ def load(root: Path) -> Config:
             else:
                 if not isinstance(v, str):
                     raise ConfigError(f"{where}: '{k}' must be a string")
-                levels = GENERATION if key == GEN else VERIFICATION
-                if v not in levels:
-                    raise ConfigError(f"{where}: invalid {key} '{v}' (use {', '.join(levels)})")
+                if v not in LEVELS[key]:
+                    raise ConfigError(f"{where}: invalid {key} '{v}' (use {', '.join(LEVELS[key])})")
                 values[key] = v
         annotations.append(Annotation(index=i, paths=paths, precedence=precedence, values=values))
-    return Config(path=path, annotations=annotations, exclude=exclude)
+    return Config(path=path, annotations=annotations, exclude=exclude, policy=policy)

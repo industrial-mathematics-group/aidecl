@@ -1,4 +1,4 @@
-"""Command-line interface: aidecl init | lint | report | annotate | badge."""
+"""Command-line interface: aidecl init | lint | report | annotate | badge | migrate."""
 from __future__ import annotations
 
 import argparse
@@ -10,14 +10,19 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from . import __version__, inline
-from .config import FILENAME, ConfigError, load
+from .config import FILENAME, VERSION, ConfigError, LegacyConfig, load, read_toml
 from .globbing import escape
-from .model import (ASSISTED, GEN, GENERATION, TESTED, VER, VERIFICATION, VERIFIED, Declaration,
-                    validate)
-from .project import Project, ProjectError
+from .model import (AI, AI_REVIEWED, AIR, ASSISTED, GEN, GENERATION, HUM, HUMAN, KEYS, LIST_KEYS, REVIEWED,
+                    TODO, Declaration, Policy, canonical_key, validate)
+from .project import Project, ProjectError, list_files
 
 SPEC_URL = ("https://github.com/industrial-mathematics-group/.github/blob/main/.github/"
             "CONTRIBUTING.md#ai-assisted-contributions")
+AXIS_INFO = (  # key, short, title, levels, badge file, colour
+    (GEN, "G", "Generation", GENERATION, "aidecl-generation.json", "4063D8"),
+    (HUM, "H", "Human review", HUMAN, "aidecl-human-review.json", "389826"),
+    (AIR, "A", "AI review", AI, "aidecl-ai-review.json", "9558B2"),
+)
 
 
 class UsageError(Exception):
@@ -37,18 +42,28 @@ def _toml_value(v) -> str:
 
 
 def _values(args) -> dict:
-    values = {GEN: args.generation, VER: args.verification}
-    for key, items in ((ASSISTED, args.assisted_by), (VERIFIED, args.verified_by), (TESTED, args.tested_by)):
+    values = {GEN: args.generation, HUM: args.human, AIR: args.ai}
+    for key, items in ((ASSISTED, args.assisted_by), (REVIEWED, args.reviewed_by),
+                       (AI_REVIEWED, args.ai_reviewed_by)):
         if items:
             for item in items:
                 if not item.strip() or any(ord(c) < 32 or ord(c) == 127 for c in item):
                     raise UsageError(f"{key} values must be non-empty single-line text: {item!r}")
             values[key] = [i.strip() for i in items]
-    return values
+    return {k: v for k, v in values.items() if v}
 
 
-def _check_complete(values: dict) -> list[str]:
-    return validate(Declaration.from_mapping(values, source="command line"))
+def _policy(root: Path) -> Policy:
+    try:
+        return load(root).policy
+    except ConfigError as e:
+        raise UsageError(str(e))
+
+
+def _check_complete(values: dict, policy: Policy) -> None:
+    problems = validate(Declaration.from_mapping(values, source="command line"), policy)
+    if problems:
+        raise UsageError("incomplete declaration: " + "; ".join(problems))
 
 
 def _open(root) -> Project:
@@ -65,11 +80,9 @@ def _results(project: Project):
         raise UsageError(str(e))
 
 
-def _status_level(r, which: str) -> str:
+def _status_level(r, key: str) -> str:
     """Level for counting: the declared level if the declaration is valid, else 'undeclared'."""
-    if r.errors:
-        return "undeclared"
-    return r.declaration.generation if which == "G" else r.declaration.verification
+    return "undeclared" if r.errors else r.declaration.get(key)
 
 
 # ---------------------------------------------------------------- init
@@ -81,22 +94,27 @@ def cmd_init(args) -> int:
     if target.exists():
         raise UsageError(f"{target} already exists")
     lines = [
-        "# AI declarations for this repository (G0-G3 generation, V0-V3 verification).",
+        "# AI declarations for this repository: generation (G0-G3), human review (H0-H3)",
+        "# and AI review (A-, A0-A3).",
         f"# Scheme: {SPEC_URL}",
         "# The LAST annotation that matches a file wins. Inline tags in a file win over",
         '# this file unless the matching annotation sets precedence = "override".',
-        "version = 1",
+        f"version = {VERSION}",
         "",
         '# exclude = ["docs/build/**"]   # files that need no declaration',
         "",
+        "# Minimum review levels (optional). G1-G3 always need at least A0.",
+        "# [policy]",
+        '# "*" = { human = "H1" }',
+        '# G3  = { human = "H2", ai = "A1" }',
+        "",
     ]
-    if args.generation or args.verification:
-        if not (args.generation and args.verification):
-            raise UsageError("give both --generation and --verification, or neither")
+    given = [args.generation, args.human, args.ai]
+    if any(given):
+        if not all(given):
+            raise UsageError("give --generation, --human and --ai together, or none of them")
         values = _values(args)
-        problems = _check_complete(values)
-        if problems:
-            raise UsageError("incomplete declaration: " + "; ".join(problems))
+        _check_complete(values, Policy())
         lines += ["# Default for everything", "[[annotations]]", 'path = "**"']
         lines += [f"{k} = {_toml_value(v)}" for k, v in values.items()]
     else:
@@ -105,8 +123,9 @@ def cmd_init(args) -> int:
             "# [[annotations]]",
             '# path = "**"',
             '# AI-Generation = "G0"',
-            '# AI-Verification = "V0"',
-            '# Tested-by = "Jane Doe"',
+            '# Human-Review = "H2"',
+            '# AI-Review = "A-"',
+            '# Reviewed-by = "Jane Doe"',
         ]
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Created {target}")
@@ -158,22 +177,20 @@ def cmd_report(args) -> int:
     if args.files:
         width = max((len(r.path) for r in results), default=4)
         for r in results:
-            d = r.declaration
             status = "✓" if not r.errors else "✗"
-            line = f"{status} {r.path:<{width}}  {d.generation or '--'} {d.verification or '--'}  ({d.source})"
+            line = f"{status} {r.path:<{width}}  {r.declaration.short()}  ({r.declaration.source})"
             if r.errors:
                 line += "  " + "; ".join(r.errors)
             print(line)
         return 0
-    gen = Counter(_status_level(r, "G") for r in results)
-    ver = Counter(_status_level(r, "V") for r in results)
     total = len(results) or 1
     print(f"{len(results)} files\n")
-    for title, counts, levels in (("Generation", gen, GENERATION), ("Verification", ver, VERIFICATION)):
+    for key, _, title, levels, _, _ in AXIS_INFO:
+        counts = Counter(_status_level(r, key) for r in results)
         print(title)
         for level, name in list(levels.items()) + [("undeclared", "missing or invalid declaration")]:
             if counts[level]:
-                print(f"  {level:<10} {name:<36} {counts[level]:>5}  {100 * counts[level] / total:5.1f}%")
+                print(f"  {level:<10} {name:<38} {counts[level]:>5}  {100 * counts[level] / total:5.1f}%")
         print()
     return 0
 
@@ -217,39 +234,17 @@ def _pattern(root: Path, arg: str) -> str:
     return pattern
 
 
-def cmd_annotate(args) -> int:
-    root = Path(args.root)
-    values = _values(args)
-    problems = _check_complete(values)
-    if problems:
-        raise UsageError("incomplete declaration: " + "; ".join(problems))
-
-    if args.inline:
-        if args.precedence:
-            raise UsageError("--precedence only applies to AIDECL.toml, not to --inline")
-        status = 0
-        for arg in args.paths:
-            path = Path(arg)
-            try:
-                inline.write(path, values)
-                print(f"Tagged {path}")
-            except (ValueError, OSError, UnicodeDecodeError) as e:
-                print(f"aidecl annotate: {e}", file=sys.stderr)
-                status = 1
-        return status
-
-    if not root.is_dir():
-        raise UsageError(f"project root {root} is not a directory")
-    patterns = [_pattern(root, a) for a in args.paths]
+def _append_annotation(root: Path, patterns: list[str], values: dict, precedence: str | None,
+                       comments: list[str] = ()) -> None:
     target = root / FILENAME
     old = target.read_text(encoding="utf-8") if target.exists() else None
-    text = old if old is not None else "version = 1\n"
+    text = old if old is not None else f"version = {VERSION}\n"
     if not text.endswith("\n"):
         text += "\n"
-    block = ["", "[[annotations]]",
+    block = ["", *[f"# {c}" for c in comments], "[[annotations]]",
              f"path = {_toml_value(patterns[0] if len(patterns) == 1 else patterns)}"]
-    if args.precedence:
-        block.append(f'precedence = "{args.precedence}"')
+    if precedence:
+        block.append(f'precedence = "{precedence}"')
     block += [f"{k} = {_toml_value(v)}" for k, v in values.items()]
     target.write_text(text + "\n".join(block) + "\n", encoding="utf-8")
     try:
@@ -260,7 +255,36 @@ def cmd_annotate(args) -> int:
         else:
             target.write_text(old, encoding="utf-8")
         raise UsageError(f"{e}; {FILENAME} was left unchanged")
-    print(f"Added an annotation for {', '.join(patterns)} to {target}")
+
+
+def cmd_annotate(args) -> int:
+    root = Path(args.root)
+    if not root.is_dir():
+        raise UsageError(f"project root {root} is not a directory")
+    values = _values(args)
+    _check_complete(values, _policy(root))
+
+    if args.inline:
+        if args.precedence:
+            raise UsageError("--precedence only applies to AIDECL.toml, not to --inline")
+        status = 0
+        for arg in args.paths:
+            path = Path(arg)
+            if not path.is_file():
+                print(f"aidecl annotate: {arg} does not exist or is not a file", file=sys.stderr)
+                status = 1
+                continue
+            try:
+                inline.write(path, values)
+                print(f"Tagged {path}")
+            except (ValueError, OSError, UnicodeDecodeError) as e:
+                print(f"aidecl annotate: {e}", file=sys.stderr)
+                status = 1
+        return status
+
+    patterns = [_pattern(root, a) for a in args.paths]
+    _append_annotation(root, patterns, values, args.precedence)
+    print(f"Added an annotation for {', '.join(patterns)} to {root / FILENAME}")
     return 0
 
 
@@ -300,34 +324,174 @@ def badge_json(label: str, counts: Counter, keys: list[str], color: str) -> dict
 
 def cmd_badge(args) -> int:
     project = _open(args.root)
-    gen, ver = Counter(), Counter()
-    for r in _results(project):
-        w = _weight(project.root, r.path, args.weight)
-        gen[_status_level(r, "G")] += w
-        ver[_status_level(r, "V")] += w
+    results = _results(project)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     suffix = "" if args.weight == "files" else f" ({args.weight})"
-    (out / "aidecl-generation.json").write_text(json.dumps(
-        badge_json(f"AI generation{suffix}", gen, [*GENERATION, "undeclared"], "4063D8"), ensure_ascii=False))
-    (out / "aidecl-verification.json").write_text(json.dumps(
-        badge_json(f"verification{suffix}", ver, [*VERIFICATION, "undeclared"], "389826"), ensure_ascii=False))
-    print(f"Wrote {out / 'aidecl-generation.json'} and {out / 'aidecl-verification.json'}")
+    weights = {r.path: _weight(project.root, r.path, args.weight) for r in results}
+    written = []
+    for key, _, title, levels, filename, color in AXIS_INFO:
+        counts = Counter()
+        for r in results:
+            counts[_status_level(r, key)] += weights[r.path]
+        label = {GEN: "AI generation", HUM: "human review", AIR: "AI review"}[key] + suffix
+        (out / filename).write_text(json.dumps(badge_json(label, counts, [*levels, "undeclared"], color),
+                                               ensure_ascii=False))
+        written.append(str(out / filename))
+    print("Wrote " + ", ".join(written))
     return 0
+
+
+# ---------------------------------------------------------------- migrate
+def migrate_values(old: dict) -> tuple[dict, list[str]]:
+    """Map a version-1 declaration (V0-V3) to G/H/A. Returns (values, keys a human must add).
+
+    V0 (human ran the tests and reviewed line by line) -> H2, AI review unknown (A- for G0)
+    V1 / V2 (independent agent, same / different model)  -> A1 / A2, human review unknown
+    V3 (human + independent agent)                       -> H2 + A1 (the model is not recorded)
+    """
+    get = {canonical_key(k, (GEN, ASSISTED, "AI-Verification", "Verified-by", "Tested-by")): v
+           for k, v in old.items()}
+    values: dict = {}
+    if get.get(GEN):
+        values[GEN] = get[GEN]
+    if get.get(ASSISTED):
+        values[ASSISTED] = get[ASSISTED]
+    v = get.get("AI-Verification")
+    tested, verified = get.get("Tested-by"), get.get("Verified-by")
+    if v in ("V0", "V3"):
+        values[HUM] = "H2"
+        if tested:
+            values[REVIEWED] = tested
+    if v in ("V1", "V3"):
+        values[AIR] = "A1"
+    elif v == "V2":
+        values[AIR] = "A2"
+    elif v == "V0" and values.get(GEN) == "G0":
+        values[AIR] = "A-"
+    if AIR in values and values[AIR] != "A-" and verified:
+        values[AI_REVIEWED] = verified
+    todo = [k for k in (GEN, HUM, REVIEWED, AIR) if k not in values]
+    if values.get(AIR) not in (None, "A-") and AI_REVIEWED not in values:
+        todo.append(AI_REVIEWED)
+    return values, todo
+
+
+def cmd_migrate(args) -> int:
+    root = Path(args.root)
+    if not root.is_dir():
+        raise UsageError(f"project root {root} is not a directory")
+    changes = []
+    todos = 0
+
+    # AIDECL.toml
+    data = None
+    try:
+        data = read_toml(root)
+    except ConfigError as e:
+        raise UsageError(str(e))
+    new_text = None
+    warnings = []
+    if data is not None and data.get("version") == 1:
+        lines = [
+            "# AI declarations (migrated from version 1 by 'aidecl migrate').",
+            f"# Scheme: {SPEC_URL}",
+            f"version = {VERSION}",
+        ]
+        if data.get("exclude"):
+            lines += ["", f"exclude = {_toml_value(list(data['exclude']))}"]
+        old_keys = (GEN, ASSISTED, "AI-Verification", "Verified-by", "Tested-by")
+        for i, table in enumerate(data.get("annotations", []), start=1):
+            if not isinstance(table, dict) or "path" not in table:
+                raise UsageError(f"{FILENAME} annotation [{i}] has no 'path'; fix it, then run migrate again")
+            rest = {k: v for k, v in table.items() if k not in ("path", "precedence")}
+            for k in rest:
+                if canonical_key(k, old_keys) is None:
+                    warnings.append(f"{FILENAME} annotation [{i}]: key '{k}' is not part of the scheme and was dropped")
+            values, todo = migrate_values(rest)
+            todos += bool(todo)
+            lines.append("")
+            if todo:
+                lines.append(f"# TODO after migration: add {', '.join(todo)}")
+            lines.append("[[annotations]]")
+            lines.append(f"path = {_toml_value(table['path'])}")
+            if table.get("precedence"):
+                lines.append(f"precedence = {_toml_value(table['precedence'])}")
+            lines += [f"{k} = {_toml_value(v)}" for k, v in values.items()]
+        new_text = "\n".join(lines) + "\n"
+        changes.append(f"{FILENAME}: version 1 -> {VERSION}")
+
+    # inline blocks with the old keys
+    inline_updates = []
+    try:
+        files = list_files(root.resolve())
+    except ProjectError as e:
+        raise UsageError(str(e))
+    for f in files:
+        found = inline.parse_values(root / f)
+        if found is None or not any(k in found[0] for k in ("AI-Verification", "Verified-by", "Tested-by")):
+            continue
+        values, todo = migrate_values(found[0])
+        todos += bool(todo)
+        # explicit TODO markers: an inline axis without its level line would otherwise be
+        # filled in from AIDECL.toml, which would claim a review that never happened
+        for key in todo:
+            values[key] = [TODO] if key in LIST_KEYS else TODO
+        values = {k: values[k] for k in KEYS if k in values}
+        inline_updates.append((f, values, todo))
+        changes.append(f"{f}: inline tags" + (f" (TODO: add {', '.join(todo)})" if todo else ""))
+
+    if not changes:
+        print("Nothing to migrate.")
+        return 0
+    for w in warnings:
+        print(f"warning: {w}")
+    if args.dry_run:
+        for c in changes:
+            print("would migrate " + c)
+        return 0
+    status = 0
+    if new_text is not None:
+        target = root / FILENAME
+        old_text = target.read_text(encoding="utf-8")
+        target.write_text(new_text, encoding="utf-8")
+        try:
+            load(root)
+        except ConfigError as e:
+            target.write_text(old_text, encoding="utf-8")
+            raise UsageError(f"the converted {FILENAME} would be invalid ({e}); fix the old file first. "
+                             "Nothing was changed")
+    failed = set()
+    for f, values, _ in inline_updates:
+        try:
+            inline.write(root / f, values)
+        except (ValueError, OSError, UnicodeDecodeError) as e:
+            print(f"aidecl migrate: {e}", file=sys.stderr)
+            failed.add(f)
+            status = 1
+    for c in changes:
+        if not any(c.startswith(f"{f}: inline tags") for f in failed):
+            print("migrated " + c)
+    if todos:
+        print("\nSome declarations need information the old levels don't contain (marked TODO).")
+        print("'aidecl lint' fails until they are filled in.")
+    return status
 
 
 # ---------------------------------------------------------------- main
 def _add_values(p: argparse.ArgumentParser, required: bool) -> None:
     p.add_argument("-g", "--generation", choices=list(GENERATION), required=required)
-    p.add_argument("-v", "--verification", choices=list(VERIFICATION), required=required)
-    p.add_argument("--assisted-by", action="append", metavar="TOOL", help="repeatable")
-    p.add_argument("--verified-by", action="append", metavar="MODEL", help="repeatable")
-    p.add_argument("--tested-by", action="append", metavar="PERSON", help="repeatable")
+    p.add_argument("-H", "--human", choices=list(HUMAN), required=required, help="human review level")
+    p.add_argument("-a", "--ai", choices=list(AI), required=required, help="AI review level")
+    p.add_argument("--assisted-by", action="append", metavar="TOOL", help="repeatable (G1-G3)")
+    p.add_argument("--reviewed-by", action="append", metavar="PERSON",
+                   help="repeatable; the responsible human (always required)")
+    p.add_argument("--ai-reviewed-by", action="append", metavar="MODEL", help="repeatable (A0-A3)")
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="aidecl", description="Declare and check AI generation (G0-G3) "
-                                     "and verification (V0-V3) levels of the files in a repository.")
+    parser = argparse.ArgumentParser(prog="aidecl", description="Declare and check AI generation (G0-G3), "
+                                     "human review (H0-H3) and AI review (A-, A0-A3) of the files in a repository.")
     parser.add_argument("--version", action="version", version=f"aidecl {__version__}")
     parser.add_argument("--root", default=".", help="project root containing AIDECL.toml (default: .)")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -357,6 +521,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default="badges", help="output directory (default: badges)")
     p.add_argument("--weight", choices=["files", "lines"], default="files")
     p.set_defaults(func=cmd_badge)
+
+    p = sub.add_parser("migrate", help="convert version-1 declarations (V0-V3) to G/H/A")
+    p.add_argument("--dry-run", action="store_true", help="only show what would change")
+    p.set_defaults(func=cmd_migrate)
 
     args = parser.parse_args(argv)
     try:

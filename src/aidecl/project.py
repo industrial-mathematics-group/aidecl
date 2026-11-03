@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import inline
 from .config import FILENAME, Config, load
-from .model import Declaration, validate
+from .model import AXES, Declaration, validate
 
 ALWAYS_SKIPPED = {FILENAME}
 
@@ -59,28 +59,24 @@ class FileResult:
 def _merge_closest(own: Declaration, fallback: Declaration | None) -> Declaration:
     """Inline tags win per axis; a missing axis is taken from AIDECL.toml.
 
-    The generation axis is AI-Generation + Assisted-by, the verification axis is
-    AI-Verification + Verified-by + Tested-by. An axis counts as given inline when its
-    level line (AI-Generation or AI-Verification) is present.
+    The axes are generation (AI-Generation + Assisted-by), human review
+    (Human-Review + Reviewed-by) and AI review (AI-Review + AI-Reviewed-by). An axis counts
+    as given inline when its level line is present.
     """
-    stray = []
-    if own.generation is None and own.assisted_by:
-        stray.append("inline Assisted-by without an inline AI-Generation line")
-    if own.verification is None and (own.verified_by or own.tested_by):
-        stray.append("inline Verified-by/Tested-by without an inline AI-Verification line")
+    stray = [f"inline {names} without an inline {level} line"
+             for level, names in AXES if own.get(level) is None and own.get(names)]
     if stray:
         own = replace(own, problems=own.problems + stray)
     if fallback is None:
         return own
-    merged = own
-    if own.generation is None and fallback.generation is not None:
-        merged = replace(merged, generation=fallback.generation, assisted_by=fallback.assisted_by)
-    if own.verification is None and fallback.verification is not None:
-        merged = replace(merged, verification=fallback.verification,
-                         verified_by=fallback.verified_by, tested_by=fallback.tested_by)
-    if merged is not own:
-        merged = replace(merged, source=f"inline + {fallback.source}", problems=list(own.problems))
-    return merged
+    updates = {}
+    for level, names in AXES:
+        if own.get(level) is None and fallback.get(level) is not None:
+            updates[Declaration._FIELDS[level]] = fallback.get(level)
+            updates[Declaration._FIELDS[names]] = fallback.get(names)
+    if not updates:
+        return own
+    return replace(own, **updates, source=f"inline + {fallback.source}", problems=list(own.problems))
 
 
 def resolve(root: Path, config: Config, path: str) -> Declaration:
@@ -113,7 +109,7 @@ class Project:
         out = []
         for f in self.files():
             d = resolve(self.root, self.config, f)
-            out.append(FileResult(f, d, validate(d)))
+            out.append(FileResult(f, d, validate(d, self.config.policy)))
         return out
 
     def unused_annotations(self, files: list[str]) -> list[int]:

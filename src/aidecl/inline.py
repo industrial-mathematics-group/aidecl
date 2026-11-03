@@ -1,8 +1,11 @@
 """Inline declarations: a block of tag lines in a comment near the top of a file.
 
     # AI-Generation: G2
-    # AI-Verification: V3
+    # Human-Review: H2
+    # AI-Review: A1
     # Assisted-by: Claude Opus 5.5 (Anthropic)
+    # AI-Reviewed-by: Claude Opus 5.5 (Anthropic), fresh session
+    # Reviewed-by: Jane Doe
 
 Rules that keep documentation from being mistaken for a declaration:
 
@@ -12,14 +15,15 @@ Rules that keep documentation from being mistaken for a declaration:
   Julia, ...) and start at the beginning of the line (``*`` continuation lines of
   ``/* */`` comments may be indented); in Markdown, fenced code blocks are skipped;
 * tag lines only count as a contiguous block, and the block must contain a valid
-  ``AI-Generation: G0``–``G3`` or ``AI-Verification: V0``–``V3`` line.
+  level line (``AI-Generation: G0``–``G3``, ``Human-Review: H0``–``H3`` or
+  ``AI-Review: A-``/``A0``–``A3``).
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-from .model import GEN, GENERATION, KEYS, LIST_KEYS, VER, VERIFICATION, Declaration, canonical_key
+from .model import GEN, KEYS, LEGACY_KEYS, LEVELS, LIST_KEYS, Declaration, canonical_key
 
 HEADER_LINES = 30
 BOM = "﻿"
@@ -60,7 +64,8 @@ _NAME_STYLES = {
 _FRONT_MATTER = {".md", ".markdown", ".qmd", ".rmd"}
 _FENCED = _FRONT_MATTER
 
-_KEY_RE = "|".join(re.escape(k) for k in KEYS)
+_ALL_KEYS = KEYS + LEGACY_KEYS
+_KEY_RE = "|".join(re.escape(k) for k in sorted(_ALL_KEYS, key=len, reverse=True))
 _CLOSERS = r"(?:-->|\*/|=#|\*\))"
 _LINE_BREAK = re.compile(r"\r\n|\n|\r")
 
@@ -106,12 +111,17 @@ def read_head(path: Path) -> list[str] | None:
     return split_lines(text)[:HEADER_LINES]
 
 
+_LEGACY_LEVELS = {"V0", "V1", "V2", "V3"}
+
+
 def _is_anchor(key: str, value: str) -> bool:
-    return (key == GEN and value in GENERATION) or (key == VER and value in VERIFICATION)
+    if key in LEVELS:
+        return value in LEVELS[key] or value == "TODO"  # TODO: placeholder left by 'aidecl migrate'
+    return key == "AI-Verification" and value in _LEGACY_LEVELS  # old scheme, for migration
 
 
 def find_blocks(path: Path, lines: list[str]) -> list[list[tuple[int, str, str]]]:
-    """Declaration blocks: runs of adjacent tag lines that contain a valid G or V level."""
+    """Declaration blocks: runs of adjacent tag lines that contain a valid level line."""
     styles = _styles_for(path)
     if styles is None:
         return []
@@ -132,7 +142,7 @@ def find_blocks(path: Path, lines: list[str]) -> list[list[tuple[int, str, str]]
         in_fence = fence is not None
         m = None if in_fence else regex.match(line)
         if m:
-            current.append((i, canonical_key(m.group(1)), m.group(2).strip()))
+            current.append((i, canonical_key(m.group(1), _ALL_KEYS), m.group(2).strip()))
             continue
         if current:
             blocks.append(current)
@@ -142,8 +152,8 @@ def find_blocks(path: Path, lines: list[str]) -> list[list[tuple[int, str, str]]
     return [b for b in blocks if any(_is_anchor(k, v) for _, k, v in b)]
 
 
-def parse(path: Path) -> Declaration | None:
-    """The inline declaration of a file, or None if it has none."""
+def parse_values(path: Path) -> tuple[dict, list[str]] | None:
+    """Raw values of the inline block (legacy keys included), or None if there is none."""
     lines = read_head(path)
     if not lines:
         return None
@@ -155,13 +165,24 @@ def parse(path: Path) -> Declaration | None:
     if len(blocks) > 1:
         problems.append("more than one inline declaration block")
     for _, key, value in blocks[0]:
-        if key in LIST_KEYS:
+        if key in LIST_KEYS or key in ("Verified-by", "Tested-by"):
             if value:
                 values.setdefault(key, []).append(value)
         elif key in values:
             problems.append(f"inline {key} given more than once")
         else:
             values[key] = value
+    return values, problems
+
+
+def parse(path: Path) -> Declaration | None:
+    """The inline declaration of a file, or None if it has none."""
+    found = parse_values(path)
+    if found is None:
+        return None
+    values, problems = found
+    if any(k in values for k in LEGACY_KEYS):
+        problems.append("inline tags use the old V levels (AI-Verification); run 'aidecl migrate'")
     d = Declaration.from_mapping(values, source="inline")
     d.problems.extend(problems)
     return d
