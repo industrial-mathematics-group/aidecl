@@ -22,8 +22,8 @@ AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), new sessions without the generat
 [[annotations]]
 path = ["README.md", "src/aidecl/cli.py", "src/aidecl/config.py", "src/aidecl/model.py", "tests/test_aidecl.py"]
 AI-Generation = "G3"
-Human-Review = "TODO"
+Human-Review = "H1"
 AI-Review = "A1"
 Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
-Reviewed-by = ["TODO"]
+Reviewed-by = ["Pascal Jung"]
 AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
