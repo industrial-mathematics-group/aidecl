@@ -50,6 +50,8 @@ def _values(args) -> dict:
                 if not item.strip() or any(ord(c) < 32 or ord(c) == 127 for c in item):
                     raise UsageError(f"{key} values must be non-empty single-line text: {item!r}")
             values[key] = [i.strip() for i in items]
+    if values[HUM] == TODO and REVIEWED not in values:
+        values[REVIEWED] = [TODO]  # so the person fills in the name next to the level
     return {k: v for k, v in values.items() if v}
 
 
@@ -101,7 +103,8 @@ def cmd_init(args) -> int:
         '# this file unless the matching annotation sets precedence = "override".',
         f"version = {VERSION}",
         "",
-        '# exclude = ["docs/build/**"]   # files that need no declaration',
+        '# exclude = ["reviews/**", "docs/build/**"]   # files that need no declaration,',
+        "# such as the committed AI reviews in reviews/ (CONTRIBUTING.md)",
         "",
         "# Minimum review levels (optional). G1-G3 always need at least A1.",
         "# [policy]",
@@ -272,6 +275,11 @@ def cmd_annotate(args) -> int:
             path = Path(arg)
             if not path.is_file():
                 print(f"aidecl annotate: {arg} does not exist or is not a file", file=sys.stderr)
+                status = 1
+                continue
+            rel = os.path.relpath(_real(arg), os.path.realpath(root))
+            if rel == ".." or rel.startswith(".." + os.sep) or os.path.isabs(rel):
+                print(f"aidecl annotate: {arg} is outside the project root {root}", file=sys.stderr)
                 status = 1
                 continue
             try:

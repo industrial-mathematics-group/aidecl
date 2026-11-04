@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .globbing import compile_glob, matches
-from .model import KEYS, LEVELS, LIST_KEYS, TODO, Declaration, Policy, canonical_key, parse_policy
+from .model import AIR, KEYS, LEGACY_AI_NONE, LEVELS, LIST_KEYS, TODO, Declaration, Policy, canonical_key, parse_policy
 
 FILENAME = "AIDECL.toml"
 VERSION = 3
@@ -143,7 +143,8 @@ def load(root: Path) -> Config:
                 if not isinstance(v, str):
                     raise ConfigError(f"{where}: '{k}' must be a string")
                 if v not in LEVELS[key] and v != TODO:  # TODO: placeholder, reported by lint
-                    raise ConfigError(f"{where}: invalid {key} '{v}' (use {', '.join(LEVELS[key])})")
+                    hint = " (A- is now A0)" if key == AIR and v == LEGACY_AI_NONE else ""
+                    raise ConfigError(f"{where}: invalid {key} '{v}' (use {', '.join(LEVELS[key])}){hint}")
                 values[key] = v
         annotations.append(Annotation(index=i, paths=paths, precedence=precedence, values=values))
     return Config(path=path, annotations=annotations, exclude=exclude, policy=policy)

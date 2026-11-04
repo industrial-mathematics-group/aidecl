@@ -60,6 +60,7 @@ aidecl lint
 ```
 
 `annotate` refuses incomplete declarations, and anything below the repository's policy (e.g. G2 without `--assisted-by`, or G2 with `-a A0`). It also checks that the resulting `AIDECL.toml` is still valid, and leaves it unchanged if not. Paths are handled like this:
+- **Inside the project root:** files outside `--root` are refused, also with `--inline`.
 - **Files and folders:** existing files are matched exactly, even with `*` or `?` in their name, and a folder becomes `folder/**`.
 - **Globs:** quote them, e.g. `"scripts/*.jl"`. Inside the project they're read relative to the current directory, as the shell would; with `--root` from outside, relative to the root. Globs with `..` or absolute paths are refused.
 
@@ -67,7 +68,7 @@ aidecl lint
 
 ```toml
 version = 3
-exclude = ["docs/build/**"]              # optional: files that need no declaration
+exclude = ["reviews/**", "docs/build/**"]   # optional: files that need no declaration
 
 [policy]                                 # optional: minimum levels
 "*" = { human = "H1" }
@@ -105,14 +106,14 @@ Reviewed-by = "Jane Doe"
 | `Assisted-by` | G1–G3; not allowed for G0 |
 | `AI-Reviewed-by` | A1–A3; not allowed for A0 |
 
-- **Placeholders:** any value may be `"TODO"`, e.g. `Human-Review = "TODO"` when an agent declares its part and a person adds the human review later. `annotate` accepts it too (`-H TODO --reviewed-by TODO`); it still checks the axes that are filled in. `lint` reports every TODO until it's filled in.
+- **Placeholders:** any value may be `"TODO"`, e.g. `Human-Review = "TODO"` when an agent declares its part and a person adds the human review later. `annotate` accepts it too: `-H TODO` without `--reviewed-by` also writes `Reviewed-by` as TODO, so the person fills in both together. It still checks the axes that are filled in. `lint` reports every TODO until it's filled in.
 - **Minimum levels:** G1–G3 always need at least **A1**: AI-written content must at least be self-checked. The `[policy]` table can require more (for G0, a minimum of A1 means A2):
   - `"*"` sets the default for every generation level;
   - `G0`–`G3` refine it per generation level, overriding the `"*"` values key by key.
 - **Which files are checked:**
   - **In a git repository:** all tracked files plus untracked files that aren't ignored, so `.gitignore` is respected. If git can't be run there, aidecl stops with an error rather than ignoring `.gitignore`.
   - **Outside git:** every file below the root.
-  - **Always skipped:** `AIDECL.toml` itself and anything under `exclude`.
+  - **Always skipped:** `AIDECL.toml` itself and anything under `exclude`. Exclude the folder of committed AI reviews (`reviews/` by default, see CONTRIBUTING.md), since the reviews themselves need no declaration.
 
 ## Inline tags
 
