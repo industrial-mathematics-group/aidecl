@@ -18,3 +18,12 @@ AI-Review = "A1"
 Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
 Reviewed-by = ["Pascal Jung"]
 AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
+
+[[annotations]]
+path = ["README.md", "src/aidecl/model.py"]
+AI-Generation = "G3"
+Human-Review = "TODO"
+AI-Review = "A1"
+Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
+Reviewed-by = ["TODO"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
