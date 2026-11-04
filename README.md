@@ -11,13 +11,15 @@
 
 It works like [REUSE](https://reuse.software) does for licences: a path-based `AIDECL.toml`, optional tags in file headers, and a `lint` command for CI.
 
-It complements the commit trailers used in pull requests:
+It complements the declaration in pull requests, where the levels are ticked in the PR template:
 
-| | Commit trailers | `AIDECL.toml` |
+| | PR declaration | `AIDECL.toml` |
 |---|---|---|
 | Describes | each **change** merged into `main` | the **current state** of every file |
 | Good for | code developed through pull requests | results, data, notebooks, papers, single-commit uploads |
 | Checked by | the *AI declaration* PR check | `aidecl lint` |
+
+The keys of `AIDECL.toml` and the inline tags are the same ones the PR check shows in its job summary.
 
 The levels are defined in the [AI policy](https://github.com/industrial-mathematics-group/.github/blob/main/.github/CONTRIBUTING.md#ai-assisted-contributions):
 
@@ -93,7 +95,7 @@ Reviewed-by = "Jane Doe"
   - `\*`, `\?` and `\\` match those characters literally.
   - This is modelled on `REUSE.toml`, plus `?`.
 - **The last matching annotation wins**, so put the general default first and the exceptions after it.
-- **Keys** are the same as the commit trailers. `Assisted-by`, `AI-Reviewed-by` and `Reviewed-by` take a string or a list.
+- **Keys:** the levels and the names below. `Assisted-by`, `AI-Reviewed-by` and `Reviewed-by` take a string or a list.
 - **Every file needs a valid declaration:**
 
 | Key | Required for |

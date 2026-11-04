@@ -22,7 +22,7 @@ AI = {
     "A3": "Extensive review or benchmark by a different model",
 }
 
-# Canonical key names. They are identical to the git trailers used in pull requests.
+# Canonical key names, as the PR check shows them in its job summary.
 GEN, HUM, AIR = "AI-Generation", "Human-Review", "AI-Review"
 ASSISTED, AI_REVIEWED, REVIEWED = "Assisted-by", "AI-Reviewed-by", "Reviewed-by"
 LEVEL_KEYS = (GEN, HUM, AIR)
