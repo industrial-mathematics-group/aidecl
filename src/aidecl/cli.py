@@ -61,7 +61,7 @@ def _policy(root: Path) -> Policy:
 
 
 def _check_complete(values: dict, policy: Policy) -> None:
-    problems = validate(Declaration.from_mapping(values, source="command line"), policy)
+    problems = validate(Declaration.from_mapping(values, source="command line"), policy, allow_todo=True)
     if problems:
         raise UsageError("incomplete declaration: " + "; ".join(problems))
 
@@ -681,12 +681,15 @@ def cmd_migrate(args) -> int:
 
 # ---------------------------------------------------------------- main
 def _add_values(p: argparse.ArgumentParser, required: bool) -> None:
-    p.add_argument("-g", "--generation", choices=list(GENERATION), required=required)
-    p.add_argument("-H", "--human", choices=list(HUMAN), required=required, help="human review level")
-    p.add_argument("-a", "--ai", choices=list(AI), required=required, help="AI review level")
+    # TODO is a placeholder for a value a person fills in later (e.g. -H TODO --reviewed-by TODO
+    # when an agent declares its part); 'lint' reports it until then.
+    p.add_argument("-g", "--generation", choices=[*GENERATION, TODO], required=required)
+    p.add_argument("-H", "--human", choices=[*HUMAN, TODO], required=required,
+                   help="human review level (TODO: left for a person)")
+    p.add_argument("-a", "--ai", choices=[*AI, TODO], required=required, help="AI review level")
     p.add_argument("--assisted-by", action="append", metavar="TOOL", help="repeatable (G1-G3)")
     p.add_argument("--reviewed-by", action="append", metavar="PERSON",
-                   help="repeatable; the responsible human (always required)")
+                   help="repeatable; the responsible human (always required; TODO: left for a person)")
     p.add_argument("--ai-reviewed-by", action="append", metavar="MODEL", help="repeatable (A1-A3)")
 
 

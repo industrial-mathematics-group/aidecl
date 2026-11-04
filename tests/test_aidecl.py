@@ -662,6 +662,63 @@ def test_todo_placeholder_in_toml(tmp_path, capsys):
     assert "invalid" not in out.out + out.err
 
 
+
+AGENT_TODO = ["-g", "G2", "-H", "TODO", "-a", "A1", "--assisted-by", "Model A",
+              "--ai-reviewed-by", "Model A, generating session", "--reviewed-by", "TODO"]
+
+
+def test_annotate_todo_placeholder(tmp_path, capsys):
+    write(tmp_path, "AIDECL.toml", HEAD)
+    write(tmp_path, "a.py")
+    assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), *AGENT_TODO]) == 0
+    a = load(tmp_path).annotations[0]
+    assert a.values["Human-Review"] == "TODO" and a.values["Reviewed-by"] == ("TODO",)
+    capsys.readouterr()
+    # lint fails until a person fills in the human review, and doesn't blame migrate
+    assert main(["--root", str(tmp_path), "lint"]) == 1
+    out = capsys.readouterr().out
+    assert "Human-Review is still TODO (to be filled in by a person)" in out
+    assert "Reviewed-by is still TODO" in out and "migrate" not in out
+
+
+def test_annotate_todo_without_reviewed_by(tmp_path):
+    # -H TODO doesn't need --reviewed-by yet
+    write(tmp_path, "a.py")
+    assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"),
+                 "-g", "G2", "-H", "TODO", "-a", "A1", "--assisted-by", "M", "--ai-reviewed-by", "M"]) == 0
+
+
+def test_annotate_todo_still_checks_other_axes(tmp_path):
+    write(tmp_path, "a.py")
+    base = ["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), "-H", "TODO"]
+    # G2 without Assisted-by, G2 with A0, and G0 with A1 are still refused
+    assert main([*base, "-g", "G2", "-a", "A1", "--ai-reviewed-by", "M"]) == 2
+    assert main([*base, "-g", "G2", "-a", "A0", "--assisted-by", "M"]) == 2
+    assert main([*base, "-g", "G0", "-a", "A1", "--ai-reviewed-by", "M"]) == 2
+    assert not (tmp_path / "AIDECL.toml").exists()
+
+
+def test_annotate_todo_respects_ai_policy(tmp_path):
+    write(tmp_path, "AIDECL.toml", HEAD + '[policy]\nG2 = { human = "H2", ai = "A2" }\n')
+    write(tmp_path, "a.py")
+    base = ["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), "-g", "G2", "-H", "TODO",
+            "--assisted-by", "M"]
+    assert main([*base, "-a", "A1", "--ai-reviewed-by", "M"]) == 2   # AI minimum still applies
+    assert main([*base, "-a", "A2", "--ai-reviewed-by", "M2"]) == 0  # human minimum waits for the person
+
+
+def test_annotate_todo_inline(tmp_path, capsys):
+    p = write(tmp_path, "a.py", "x = 1\n")
+    assert main(["--root", str(tmp_path), "annotate", str(p), "--inline", *AGENT_TODO]) == 0
+    text = p.read_text()
+    assert "# Human-Review: TODO" in text and "# Reviewed-by: TODO" in text
+    res = {r.path: r for r in Project(tmp_path).results()}
+    assert res["a.py"].declaration.human == "TODO"
+    assert any("Human-Review is still TODO" in e for e in res["a.py"].errors)
+    # filling it in makes it pass
+    p.write_text(text.replace("Human-Review: TODO", "Human-Review: H1").replace("Reviewed-by: TODO", "Reviewed-by: J"))
+    assert main(["--root", str(tmp_path), "lint"]) == 0
+
 V2_TOML = """# our declarations
 version = 2  # scheme version
 

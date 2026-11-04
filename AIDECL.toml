@@ -1,5 +1,5 @@
 version = 3
-exclude = []
+exclude = ["reviews/**"]   # committed AI reviews (CONTRIBUTING.md) need no declaration
 
 [[annotations]]
 path = "**"
@@ -9,3 +9,12 @@ Human-Review = "H1"
 Reviewed-by = "Pascal Jung"
 Assisted-by = ["Claude (Anthropic), claude-opus-5-5"]
 AI-Reviewed-by = ["Claude (Anthropic), claude-opus-5-5, independent review agent without the generating conversation"]
+
+[[annotations]]
+path = ["README.md", "pyproject.toml", "src/aidecl/cli.py", "src/aidecl/inline.py", "src/aidecl/model.py", "tests/test_aidecl.py"]
+AI-Generation = "G3"
+Human-Review = "H1"
+AI-Review = "A1"
+Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
+Reviewed-by = ["Pascal Jung"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]

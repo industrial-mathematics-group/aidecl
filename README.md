@@ -103,7 +103,7 @@ Reviewed-by = "Jane Doe"
 | `Assisted-by` | G1–G3; not allowed for G0 |
 | `AI-Reviewed-by` | A1–A3; not allowed for A0 |
 
-- **Placeholders:** any value may be `"TODO"`, e.g. `Human-Review = "TODO"` when an agent declares its part and a person adds the human review later. `lint` reports every TODO until it's filled in.
+- **Placeholders:** any value may be `"TODO"`, e.g. `Human-Review = "TODO"` when an agent declares its part and a person adds the human review later. `annotate` accepts it too (`-H TODO --reviewed-by TODO`); it still checks the axes that are filled in. `lint` reports every TODO until it's filled in.
 - **Minimum levels:** G1–G3 always need at least **A1**: AI-written content must at least be self-checked. The `[policy]` table can require more (for G0, a minimum of A1 means A2):
   - `"*"` sets the default for every generation level;
   - `G0`–`G3` refine it per generation level, overriding the `"*"` values key by key.
@@ -135,7 +135,7 @@ Three rules keep documentation from being mistaken for a declaration:
 
   Fenced code blocks in Markdown are skipped. File types without a known comment syntax, such as `.txt`, `.csv`, `.json`, notebooks or `LICENSE`, are only declared through `AIDECL.toml`.
 - **Start of the line:** the comment must start the line. Only `*` continuation lines of a `/* */` comment may be indented, so indented examples in docstrings are ignored.
-- **A contiguous block with a valid level:** tag lines count only as a block of adjacent lines that contains a valid level line, such as `AI-Generation: G2` or `AI-Review: A0`. A comment that merely explains the keys, like `#   AI-Generation: G0-G3`, is ignored. `TODO` (left by `aidecl migrate`) also counts as a level here, so a block with an unfilled TODO is found and fails `lint`.
+- **A contiguous block with a valid level:** tag lines count only as a block of adjacent lines that contains a valid level line, such as `AI-Generation: G2` or `AI-Review: A0`. A comment that merely explains the keys, like `#   AI-Generation: G0-G3`, is ignored. `TODO` (a placeholder, e.g. left by `aidecl migrate` or an agent) also counts as a level here, so a block with an unfilled TODO is found and fails `lint`.
 
 `aidecl annotate FILE … --inline` writes or updates these lines for you:
 - **Placement:** after a shebang, an encoding line, an XML declaration or (in Markdown) YAML front matter.

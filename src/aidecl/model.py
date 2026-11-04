@@ -154,15 +154,20 @@ class Declaration:
         return " ".join(v or "--" for v in (self.generation, self.human, self.ai))
 
 
-def validate(d: Declaration, policy: Policy | None = None) -> list[str]:
-    """Return the rule violations of a declaration (empty list = valid)."""
+def validate(d: Declaration, policy: Policy | None = None, allow_todo: bool = False) -> list[str]:
+    """Return the rule violations of a declaration (empty list = valid).
+
+    With allow_todo, TODO placeholders are not reported themselves (used by 'annotate', so an
+    agent can leave e.g. the human review for a person); the other rules still apply to the
+    axes that are filled in.
+    """
     if d.source == "none":
         return ["no declaration (not matched by AIDECL.toml and no inline tags)"]
     errors = list(d.problems)
     for key in KEYS:
         v = d.get(key)
-        if v == TODO or (key in LIST_KEYS and TODO in v):
-            errors.append(f"{key} is still TODO (left by 'aidecl migrate')")
+        if not allow_todo and (v == TODO or (key in LIST_KEYS and TODO in v)):
+            errors.append(f"{key} is still TODO (to be filled in by a person)")
     for key in LEVEL_KEYS:
         v = d.get(key)
         if v == TODO:
@@ -173,9 +178,9 @@ def validate(d: Declaration, policy: Policy | None = None) -> list[str]:
             hint = " (A- is now A0; run 'aidecl migrate')" if key == AIR and v == LEGACY_AI_NONE else ""
             errors.append(f"invalid {key} '{v}' (use {', '.join(LEVELS[key])}){hint}")
 
+    # Checks below involve specific axes; a TODO axis is skipped (it is not in the level
+    # sets), while the axes that are filled in are still checked.
     g, h, a = d.generation, d.human, d.ai
-    if TODO in (g, h, a) or any(TODO in d.get(k) for k in LIST_KEYS):
-        return errors
     if g in ("G1", "G2", "G3") and not d.assisted_by:
         errors.append(f"{g} needs {ASSISTED} (tool and model)")
     if g == "G0" and d.assisted_by:
@@ -190,11 +195,11 @@ def validate(d: Declaration, policy: Policy | None = None) -> list[str]:
         errors.append("G0 has no generating AI session that could check itself; "
                       "an AI review of human-written content is A2 or A3")
 
-    if g in GENERATION and (h is None or h in HUMAN) and (a is None or a in AI):
+    if g in GENERATION and (h is None or h in HUMAN or h == TODO) and (a is None or a in AI or a == TODO):
         min_h, min_a = (policy or Policy()).minimum(g)
-        if min_h and h and not at_least(h, min_h):
+        if min_h and h in HUMAN and not at_least(h, min_h):
             errors.append(f"{g} requires at least {min_h} by policy (declared {h})")
-        if min_a and a and not at_least(a, min_a):
+        if min_a and a in AI and not at_least(a, min_a):
             reason = "AI-written content must at least be self-checked" if min_a == "A1" else "by policy"
             errors.append(f"{g} requires at least {min_a} ({reason}; declared {a})")
     return errors
