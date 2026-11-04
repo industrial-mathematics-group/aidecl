@@ -118,7 +118,7 @@ def _is_anchor(key: str, value: str) -> bool:
     if key in LEVELS:
         if key == "AI-Review" and value == "A-":
             return True  # version 2 scale, for migration (and a clear lint error)
-        return value in LEVELS[key] or value == "TODO"  # TODO: placeholder left by 'aidecl migrate'
+        return value in LEVELS[key] or value == "TODO"  # TODO: placeholder for a person to fill in
     return key == "AI-Verification" and value in _LEGACY_LEVELS  # old scheme, for migration
 
 
