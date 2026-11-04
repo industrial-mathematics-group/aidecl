@@ -17,3 +17,13 @@ Human-Review = "H1"
 AI-Review = "A2"
 Reviewed-by = ["Pascal Jung"]
 AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), new sessions without the generating conversation (reviews/)"]
+
+# Changed after the A2 reviews in reviews/05ff570.md (fixes for their findings): self-checked only.
+[[annotations]]
+path = ["README.md", "src/aidecl/cli.py", "src/aidecl/config.py", "src/aidecl/model.py", "tests/test_aidecl.py"]
+AI-Generation = "G3"
+Human-Review = "H1"
+AI-Review = "A1"
+Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
+Reviewed-by = ["Pascal Jung"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]

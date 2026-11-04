@@ -113,6 +113,18 @@ def test_old_none_level_has_a_hint(tmp_path):
         parse_policy({"*": {"ai": "A-"}})
 
 
+def test_old_none_level_hints_dont_loop(tmp_path):
+    # with a version-3 AIDECL.toml, migrate refuses, so the hint must not send people there alone
+    errors = validate(d(g="G0", h="H1", a="A-", rev="J"))
+    assert any("convert them by hand" in e for e in errors)
+    with pytest.raises(ValueError) as e:
+        parse_policy({"*": {"ai": "A-"}})
+    assert "migrate" not in str(e.value)
+    write(tmp_path, "AIDECL.toml", HEAD + '[[annotations]]\npath = "**"\n' + TOML_G0.replace('"A0"', '"A-"'))
+    with pytest.raises(ConfigError, match="A- is now A0"):
+        load(tmp_path)
+
+
 @pytest.mark.parametrize("bad", [
     {"G9": {"human": "H1"}}, {"*": "H1"}, {"*": {"human": "H5"}}, {"*": {"ai": "A9"}}, {"*": {"robot": "A2"}},
 ])
@@ -852,3 +864,33 @@ def test_migrate_v2_keeps_comments_crlf_and_skips_itself(tmp_path, capsys):
     assert '"*" = { "ai" = "A1" }' in new and 'AI-Review = "A2"' in new
     assert "\n" not in new.replace("\r\n", "")                        # no bare LF
     assert "AIDECL.toml: inline tags" not in capsys.readouterr().out
+
+
+def test_annotate_todo_human_adds_reviewed_by_todo(tmp_path):
+    write(tmp_path, "a.py")
+    assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"),
+                 "-g", "G2", "-H", "TODO", "-a", "A1", "--assisted-by", "M", "--ai-reviewed-by", "M"]) == 0
+    toml = (tmp_path / "AIDECL.toml").read_text()
+    assert 'Reviewed-by = ["TODO"]' in toml
+    # a name given on the command line is kept
+    assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), "-g", "G2", "-H", "TODO",
+                 "-a", "A1", "--assisted-by", "M", "--ai-reviewed-by", "M", "--reviewed-by", "Jane"]) == 0
+    assert 'Reviewed-by = ["Jane"]' in (tmp_path / "AIDECL.toml").read_text()
+
+
+def test_annotate_inline_refuses_files_outside_root(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "p"
+    root.mkdir()
+    outside = write(tmp_path, "x.py")
+    monkeypatch.chdir(tmp_path)
+    assert main(["--root", "p", "annotate", "x.py", "--inline", *ARGS_G0]) == 1
+    assert "outside the project root" in capsys.readouterr().err
+    assert outside.read_text() == "x\n"
+    inside = write(root, "y.py")
+    assert main(["--root", "p", "annotate", "p/y.py", "--inline", *ARGS_G0]) == 0
+    assert "AI-Generation: G0" in inside.read_text()
+
+
+def test_init_suggests_excluding_reviews(tmp_path):
+    assert main(["--root", str(tmp_path), "init"]) == 0
+    assert "reviews/**" in (tmp_path / "AIDECL.toml").read_text()

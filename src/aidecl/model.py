@@ -41,10 +41,15 @@ LEGACY_KEYS = ("AI-Verification", "Verified-by", "Tested-by")
 #   A2 (different model) -> A2 (A3 now also requires an extensive review or benchmark),
 #   A3 (different model with benchmark) -> A3.
 LEGACY_AI_NONE = "A-"
+# Where the old value turns up, AIDECL.toml is already version 3 (or absent), so 'aidecl migrate'
+# may refuse; say what to write instead.
+LEGACY_AI_HINT = (" (A- is now A0; without AIDECL.toml, 'aidecl migrate --from 2'"
+                  " converts all old tags, otherwise convert them by hand: A- -> A0, A0 -> A1, A1 -> A2)")
 
 ORDER = {k: i for i, k in enumerate([*HUMAN, *AI])}  # H0<H1<..., A0<A1<...
 
-# Placeholder written by 'aidecl migrate' where the old levels carry no information.
+# Placeholder for a level or name that a person still has to fill in. 'aidecl migrate' writes it
+# where the old levels carry no information, and 'aidecl annotate' accepts it (e.g. -H TODO).
 # It blocks the per-axis fallback to AIDECL.toml and fails lint until a person fills it in.
 TODO = "TODO"
 
@@ -69,7 +74,7 @@ BUILTIN_MIN_AI_FOR_GENERATED = "A1"  # G1-G3 need at least a self-check by the A
 class Policy:
     """Minimum review levels, per generation level ("*" = default for all)."""
 
-    rules: dict = field(default_factory=dict)  # {"*"|"G0".."G3": {"human": "H1", "ai": "A0"}}
+    rules: dict = field(default_factory=dict)  # {"*"|"G0".."G3": {"human": "H1", "ai": "A2"}}
 
     def minimum(self, generation: str | None) -> tuple[str | None, str | None]:
         merged = dict(self.rules.get("*", {}))
@@ -94,14 +99,14 @@ def parse_policy(data, where: str = "policy") -> Policy:
         if gen != "*" and gen not in GENERATION:
             raise ValueError(f"{where}: unknown key '{gen}' (use \"*\", G0, G1, G2 or G3)")
         if not isinstance(req, dict):
-            raise ValueError(f"{where}.{gen} must be a table like {{ human = \"H1\", ai = \"A0\" }}")
+            raise ValueError(f"{where}.{gen} must be a table like {{ human = \"H1\", ai = \"A2\" }}")
         unknown = set(req) - {"human", "ai"}
         if unknown:
             raise ValueError(f"{where}.{gen}: unknown key(s) {', '.join(sorted(unknown))} (use human, ai)")
         if "human" in req and (not isinstance(req["human"], str) or req["human"] not in HUMAN):
             raise ValueError(f"{where}.{gen}.human must be one of {', '.join(HUMAN)}")
         if "ai" in req and (not isinstance(req["ai"], str) or req["ai"] not in AI):
-            hint = " (A- is now A0; run 'aidecl migrate')" if req["ai"] == LEGACY_AI_NONE else ""
+            hint = " (A- is now A0)" if req["ai"] == LEGACY_AI_NONE else ""
             raise ValueError(f"{where}.{gen}.ai must be one of {', '.join(AI)}{hint}")
         rules[gen] = dict(req)
     return Policy(rules)
@@ -175,7 +180,7 @@ def validate(d: Declaration, policy: Policy | None = None, allow_todo: bool = Fa
         if v is None:
             errors.append(f"missing {key}")
         elif v not in LEVELS[key]:
-            hint = " (A- is now A0; run 'aidecl migrate')" if key == AIR and v == LEGACY_AI_NONE else ""
+            hint = LEGACY_AI_HINT if key == AIR and v == LEGACY_AI_NONE else ""
             errors.append(f"invalid {key} '{v}' (use {', '.join(LEVELS[key])}){hint}")
 
     # Checks below involve specific axes; a TODO axis is skipped (it is not in the level
