@@ -14,4 +14,4 @@ jobs:
     uses: industrial-mathematics-group/.github/.github/workflows/aidecl.yml@main
     # with:
     #   weight: lines        # weight the badges by lines instead of files
-    #   aidecl-ref: v0.2.0   # pin a release of aidecl
+    #   aidecl-ref: v0.3.0   # pin a release of aidecl

@@ -16,11 +16,10 @@ HUMAN = {
     "H3": "Independently validated",
 }
 AI = {
-    "A-": "No AI review",
-    "A0": "Self-check by the generating session",
-    "A1": "Independent session, same model",
-    "A2": "Independent session, different model",
-    "A3": "Different model with full benchmark",
+    "A0": "No AI review",
+    "A1": "Self-check by the generating session",
+    "A2": "Review by a new session",
+    "A3": "Extensive review or benchmark by a different model",
 }
 
 # Canonical key names. They are identical to the git trailers used in pull requests.
@@ -37,7 +36,13 @@ AXES = ((GEN, ASSISTED), (HUM, REVIEWED), (AIR, AI_REVIEWED))
 # Keys of the first version of the scheme (V0-V3), recognised for migration only.
 LEGACY_KEYS = ("AI-Verification", "Verified-by", "Tested-by")
 
-ORDER = {k: i for i, k in enumerate([*HUMAN, *AI])}  # H0<H1<..., A-<A0<A1<...
+# Version 2 used A-, A0-A3 for the AI review. The new scale shifts by one:
+#   A- (none) -> A0, A0 (self-check) -> A1, A1 (new session, same model) -> A2,
+#   A2 (different model) -> A2 (A3 now also requires an extensive review or benchmark),
+#   A3 (different model with benchmark) -> A3.
+LEGACY_AI_NONE = "A-"
+
+ORDER = {k: i for i, k in enumerate([*HUMAN, *AI])}  # H0<H1<..., A0<A1<...
 
 # Placeholder written by 'aidecl migrate' where the old levels carry no information.
 # It blocks the per-axis fallback to AIDECL.toml and fails lint until a person fills it in.
@@ -57,7 +62,7 @@ def at_least(level: str, minimum: str) -> bool:
 
 
 # ------------------------------------------------------------------ policy
-BUILTIN_MIN_AI_FOR_GENERATED = "A0"  # G1-G3 need at least a self-check by the AI
+BUILTIN_MIN_AI_FOR_GENERATED = "A1"  # G1-G3 need at least a self-check by the AI
 
 
 @dataclass(frozen=True)
@@ -73,6 +78,8 @@ class Policy:
         human, ai = merged.get("human"), merged.get("ai")
         if generation in ("G1", "G2", "G3") and (ai is None or not at_least(ai, BUILTIN_MIN_AI_FOR_GENERATED)):
             ai = BUILTIN_MIN_AI_FOR_GENERATED
+        if generation == "G0" and ai == "A1":
+            ai = "A2"  # human-written content has no generating session; any AI review of it is A2+
         return human, ai
 
 
@@ -94,7 +101,8 @@ def parse_policy(data, where: str = "policy") -> Policy:
         if "human" in req and (not isinstance(req["human"], str) or req["human"] not in HUMAN):
             raise ValueError(f"{where}.{gen}.human must be one of {', '.join(HUMAN)}")
         if "ai" in req and (not isinstance(req["ai"], str) or req["ai"] not in AI):
-            raise ValueError(f"{where}.{gen}.ai must be one of {', '.join(AI)}")
+            hint = " (A- is now A0; run 'aidecl migrate')" if req["ai"] == LEGACY_AI_NONE else ""
+            raise ValueError(f"{where}.{gen}.ai must be one of {', '.join(AI)}{hint}")
         rules[gen] = dict(req)
     return Policy(rules)
 
@@ -162,7 +170,8 @@ def validate(d: Declaration, policy: Policy | None = None) -> list[str]:
         if v is None:
             errors.append(f"missing {key}")
         elif v not in LEVELS[key]:
-            errors.append(f"invalid {key} '{v}' (use {', '.join(LEVELS[key])})")
+            hint = " (A- is now A0; run 'aidecl migrate')" if key == AIR and v == LEGACY_AI_NONE else ""
+            errors.append(f"invalid {key} '{v}' (use {', '.join(LEVELS[key])}){hint}")
 
     g, h, a = d.generation, d.human, d.ai
     if TODO in (g, h, a) or any(TODO in d.get(k) for k in LIST_KEYS):
@@ -173,16 +182,19 @@ def validate(d: Declaration, policy: Policy | None = None) -> list[str]:
         errors.append(f"G0 means no AI was used, but {ASSISTED} is set")
     if h in HUMAN and not d.reviewed_by:
         errors.append(f"{HUM} needs {REVIEWED} (the responsible human)")
-    if a in ("A0", "A1", "A2", "A3") and not d.ai_reviewed_by:
+    if a in ("A1", "A2", "A3") and not d.ai_reviewed_by:
         errors.append(f"{a} needs {AI_REVIEWED} (reviewing model and session)")
-    if a == "A-" and d.ai_reviewed_by:
-        errors.append(f"A- means no AI review, but {AI_REVIEWED} is set")
+    if a == "A0" and d.ai_reviewed_by:
+        errors.append(f"A0 means no AI review, but {AI_REVIEWED} is set")
+    if g == "G0" and a == "A1":
+        errors.append("G0 has no generating AI session that could check itself; "
+                      "an AI review of human-written content is A2 or A3")
 
     if g in GENERATION and (h is None or h in HUMAN) and (a is None or a in AI):
         min_h, min_a = (policy or Policy()).minimum(g)
         if min_h and h and not at_least(h, min_h):
             errors.append(f"{g} requires at least {min_h} by policy (declared {h})")
         if min_a and a and not at_least(a, min_a):
-            reason = "AI-written content must at least be self-checked" if min_a == "A0" else "by policy"
+            reason = "AI-written content must at least be self-checked" if min_a == "A1" else "by policy"
             errors.append(f"{g} requires at least {min_a} ({reason}; declared {a})")
     return errors

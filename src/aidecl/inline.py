@@ -2,7 +2,7 @@
 
     # AI-Generation: G2
     # Human-Review: H2
-    # AI-Review: A1
+    # AI-Review: A2
     # Assisted-by: Claude Opus 5.5 (Anthropic)
     # AI-Reviewed-by: Claude Opus 5.5 (Anthropic), fresh session
     # Reviewed-by: Jane Doe
@@ -16,7 +16,7 @@ Rules that keep documentation from being mistaken for a declaration:
   ``/* */`` comments may be indented); in Markdown, fenced code blocks are skipped;
 * tag lines only count as a contiguous block, and the block must contain a valid
   level line (``AI-Generation: G0``–``G3``, ``Human-Review: H0``–``H3`` or
-  ``AI-Review: A-``/``A0``–``A3``).
+  ``AI-Review: A0``–``A3``).
 """
 from __future__ import annotations
 
@@ -116,6 +116,8 @@ _LEGACY_LEVELS = {"V0", "V1", "V2", "V3"}
 
 def _is_anchor(key: str, value: str) -> bool:
     if key in LEVELS:
+        if key == "AI-Review" and value == "A-":
+            return True  # version 2 scale, for migration (and a clear lint error)
         return value in LEVELS[key] or value == "TODO"  # TODO: placeholder left by 'aidecl migrate'
     return key == "AI-Verification" and value in _LEGACY_LEVELS  # old scheme, for migration
 

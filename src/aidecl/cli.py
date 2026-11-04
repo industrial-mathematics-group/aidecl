@@ -95,7 +95,7 @@ def cmd_init(args) -> int:
         raise UsageError(f"{target} already exists")
     lines = [
         "# AI declarations for this repository: generation (G0-G3), human review (H0-H3)",
-        "# and AI review (A-, A0-A3).",
+        "# and AI review (A0-A3).",
         f"# Scheme: {SPEC_URL}",
         "# The LAST annotation that matches a file wins. Inline tags in a file win over",
         '# this file unless the matching annotation sets precedence = "override".',
@@ -103,10 +103,10 @@ def cmd_init(args) -> int:
         "",
         '# exclude = ["docs/build/**"]   # files that need no declaration',
         "",
-        "# Minimum review levels (optional). G1-G3 always need at least A0.",
+        "# Minimum review levels (optional). G1-G3 always need at least A1.",
         "# [policy]",
         '# "*" = { human = "H1" }',
-        '# G3  = { human = "H2", ai = "A1" }',
+        '# G3  = { human = "H2", ai = "A2" }',
         "",
     ]
     given = [args.generation, args.human, args.ai]
@@ -124,7 +124,7 @@ def cmd_init(args) -> int:
             '# path = "**"',
             '# AI-Generation = "G0"',
             '# Human-Review = "H2"',
-            '# AI-Review = "A-"',
+            '# AI-Review = "A0"',
             '# Reviewed-by = "Jane Doe"',
         ]
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -346,9 +346,10 @@ def cmd_badge(args) -> int:
 def migrate_values(old: dict) -> tuple[dict, list[str]]:
     """Map a version-1 declaration (V0-V3) to G/H/A. Returns (values, keys a human must add).
 
-    V0 (human ran the tests and reviewed line by line) -> H2, AI review unknown (A- for G0)
-    V1 / V2 (independent agent, same / different model)  -> A1 / A2, human review unknown
-    V3 (human + independent agent)                       -> H2 + A1 (the model is not recorded)
+    V0 (human ran the tests and reviewed line by line) -> H2, AI review unknown (A0 for G0)
+    V1 / V2 (independent agent, same / different model)  -> A2, human review unknown
+    V3 (human + independent agent)                       -> H2 + A2
+    A3 needs an extensive review or benchmark, which V2 doesn't record, so V2 becomes A2 too.
     """
     get = {canonical_key(k, (GEN, ASSISTED, "AI-Verification", "Verified-by", "Tested-by")): v
            for k, v in old.items()}
@@ -363,18 +364,152 @@ def migrate_values(old: dict) -> tuple[dict, list[str]]:
         values[HUM] = "H2"
         if tested:
             values[REVIEWED] = tested
-    if v in ("V1", "V3"):
-        values[AIR] = "A1"
-    elif v == "V2":
+    if v in ("V1", "V2", "V3"):
         values[AIR] = "A2"
     elif v == "V0" and values.get(GEN) == "G0":
-        values[AIR] = "A-"
-    if AIR in values and values[AIR] != "A-" and verified:
+        values[AIR] = "A0"
+    if values.get(AIR) not in (None, "A0") and verified:
         values[AI_REVIEWED] = verified
     todo = [k for k in (GEN, HUM, REVIEWED, AIR) if k not in values]
-    if values.get(AIR) not in (None, "A-") and AI_REVIEWED not in values:
+    if values.get(AIR) not in (None, "A0") and AI_REVIEWED not in values:
         todo.append(AI_REVIEWED)
     return values, todo
+
+
+# version 2 -> 3: the AI review scale moved up by one (see model.py)
+_AI_V2 = {"A-": "A0", "A0": "A1", "A1": "A2", "A2": "A2", "A3": "A3"}
+_NOTE_A2 = ("was A2 (different model). A3 now also requires an extensive review or benchmark: "
+            "raise it to A3 if that applies")
+
+
+def map_ai_v2(level, generation) -> tuple[str | None, str | None]:
+    """New AI-Review for a version-2 value: (value, note). Value TODO if it can't be mapped."""
+    if not isinstance(level, str):
+        return level, None
+    if level == "A0" and generation == "G0":
+        return TODO, ("was A0 (self-check) on human-written content, which the new scale doesn't have: "
+                      "A0 if there was no AI review, A2 or A3 if there was one")
+    if level not in _AI_V2:
+        return level, None  # TODO or invalid: left for lint
+    return _AI_V2[level], (_NOTE_A2 if level == "A2" else None)
+
+
+def _toml_key(name: str) -> str:
+    return name.strip().strip('"').strip("'")
+
+
+def _split_comment(line: str) -> tuple[str, str]:
+    """Split a TOML line into code and trailing comment (a '#' outside strings)."""
+    quote = None
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if quote:
+            if c == "\\" and quote == '"':
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in "\"'":
+            quote = c
+        elif c == "#":
+            return line[:i], line[i:]
+        i += 1
+    return line, ""
+
+
+def migrate_toml_v2(text: str, data: dict) -> tuple[str, list[str], int]:
+    """Rewrite a version-2 AIDECL.toml line by line, keeping comments and layout.
+    Returns (new text, notes, number of TODOs). Raises UsageError if the layout is too unusual
+    to convert safely (checked by comparing the parsed result with the expected one)."""
+    import copy
+    import re
+    import tomllib
+
+    annotations = data.get("annotations", [])
+    expected = copy.deepcopy(data)
+    expected["version"] = VERSION
+    notes, todos = [], 0
+    plan = {}  # annotation index -> (new value, note)
+    for i, table in enumerate(annotations if isinstance(annotations, list) else []):
+        if not isinstance(table, dict):
+            continue
+        get = {canonical_key(k): k for k in table}
+        if AIR not in get:
+            continue
+        g = table.get(get[GEN]) if GEN in get else None
+        new, note = map_ai_v2(table[get[AIR]], g)
+        plan[i] = (new, note)
+        expected["annotations"][i][get[AIR]] = new
+        if new == TODO:
+            todos += 1
+        if note:
+            notes.append(f"{FILENAME} annotation [{i + 1}]: {note}")
+    policy = expected.get("policy")
+    if isinstance(policy, dict):
+        for gen, req in policy.items():
+            if isinstance(req, dict) and isinstance(req.get("ai"), str) and req["ai"] in _AI_V2:
+                if req["ai"] == "A2":
+                    notes.append(f"{FILENAME} [policy] {gen}: ai = \"A2\" (different model) is now A2 "
+                                 "(new session); use A3 to keep requiring a different model")
+                req["ai"] = _AI_V2[req["ai"]]
+
+    header = re.compile(r"^\s*(\[\[?)\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
+    level_line = re.compile(r"""^(\s*)(["']?[A-Za-z-]+["']?)(\s*=\s*)(["'])([^"']*)(\4)(.*)$""", re.S)
+    out, section, index = [], None, -1
+    for line in text.splitlines(keepends=True):
+        m = header.match(line)
+        if m:
+            section = m.group(2).strip()
+            if m.group(1) == "[[" and section == "annotations":
+                index += 1
+            out.append(line)
+            continue
+        eol = "\r\n" if line.endswith("\r\n") else "\n"
+        if section is None:
+            line = re.sub(r"^(\s*version\s*=\s*)2(\s*(#.*)?)$", rf"\g<1>{VERSION}\g<2>", line, flags=re.S)
+        elif section == "annotations" and index in plan:
+            m = level_line.match(line)
+            if m and canonical_key(_toml_key(m.group(2))) == AIR:
+                new, note = plan[index]
+                if new == TODO:
+                    out.append(f"{m.group(1)}# TODO after migration: {note}{eol}")
+                elif note:
+                    out.append(f"{m.group(1)}# Note from migration: {note}{eol}")
+                line = f"{m.group(1)}{m.group(2)}{m.group(3)}{m.group(4)}{new}{m.group(6)}{m.group(7)}"
+        elif section == "policy" or section.startswith("policy.") or section.startswith('"policy".'):
+            code, comment = _split_comment(line)
+            code = re.sub(r"""((?:\bai|"ai"|'ai')\s*=\s*)(["'])(A-|A[0-3])(\2)""",
+                          lambda m: f"{m.group(1)}{m.group(2)}{_AI_V2[m.group(3)]}{m.group(4)}", code)
+            line = code + comment
+        out.append(line)
+    new_text = "".join(out)
+    try:
+        ok = tomllib.loads(new_text) == expected
+    except tomllib.TOMLDecodeError:
+        ok = False
+    if not ok:
+        raise UsageError(
+            f"{FILENAME} is laid out in a way 'migrate' can't convert safely. Nothing was changed. "
+            "Rewrite the unusual parts as plain lines (one [[annotations]] table per annotation, "
+            "AI-Review = \"...\" and ai = \"...\" on their own lines), keep version = 2 and the old levels, "
+            "then run 'aidecl migrate' again. It converts AIDECL.toml and the inline tags together")
+    return new_text, notes, todos
+
+
+def _toml_generation(data: dict | None, path: str):
+    """AI-Generation of the last version-2 annotation matching path (None if none)."""
+    from .globbing import matches
+    g = None
+    for table in (data or {}).get("annotations", []) or []:
+        if not isinstance(table, dict):
+            continue
+        pats = table.get("path")
+        pats = [pats] if isinstance(pats, str) else (pats if isinstance(pats, list) else [])
+        if any(isinstance(pt, str) and matches(pt, path) for pt in pats):
+            keys = {canonical_key(k): k for k in table}
+            g = table.get(keys[GEN]) if GEN in keys else g
+    return g
 
 
 def cmd_migrate(args) -> int:
@@ -391,8 +526,9 @@ def cmd_migrate(args) -> int:
     except ConfigError as e:
         raise UsageError(str(e))
     new_text = None
-    warnings = []
-    if data is not None and data.get("version") == 1:
+    warnings, notes = [], []
+    version = data.get("version") if data is not None else None
+    if version == 1:
         lines = [
             "# AI declarations (migrated from version 1 by 'aidecl migrate').",
             f"# Scheme: {SPEC_URL}",
@@ -400,6 +536,8 @@ def cmd_migrate(args) -> int:
         ]
         if data.get("exclude"):
             lines += ["", f"exclude = {_toml_value(list(data['exclude']))}"]
+        if "policy" in data:
+            warnings.append(f"{FILENAME}: version 1 had no [policy]; the table was dropped, add it again by hand")
         old_keys = (GEN, ASSISTED, "AI-Verification", "Verified-by", "Tested-by")
         for i, table in enumerate(data.get("annotations", []), start=1):
             if not isinstance(table, dict) or "path" not in table:
@@ -420,62 +558,125 @@ def cmd_migrate(args) -> int:
             lines += [f"{k} = {_toml_value(v)}" for k, v in values.items()]
         new_text = "\n".join(lines) + "\n"
         changes.append(f"{FILENAME}: version 1 -> {VERSION}")
+    elif version == 2:
+        new_text, toml_notes, n = migrate_toml_v2((root / FILENAME).read_bytes().decode("utf-8"), data)
+        notes += toml_notes
+        todos += n
+        changes.append(f"{FILENAME}: version 2 -> {VERSION}")
 
-    # inline blocks with the old keys
+    # Inline tags. Blocks with the V0-V3 keys are always converted. Blocks with G/H/A keys use the
+    # old AI review scale when AIDECL.toml is version 2; without AIDECL.toml, '--from 2' says so.
+    # Afterwards AIDECL.toml is version 3 (created if needed), which records that inline tags
+    # are on the new scale, so running migrate again never shifts them twice.
+    if args.from_version == 2 and data is not None and version != 2:
+        raise UsageError(f"{FILENAME} is version {version}, so inline tags are already read on its scale "
+                         "(running --from 2 here could shift tags a second time). --from 2 is only for repositories "
+                         "without AIDECL.toml. Convert remaining old tags by hand: A- -> A0, A0 -> A1, A1 -> A2")
+    from_v2 = version == 2 or args.from_version == 2
+    create_toml = args.from_version == 2 and data is None
     inline_updates = []
+    seen_legacy_none = []
+    several = []
     try:
         files = list_files(root.resolve())
     except ProjectError as e:
         raise UsageError(str(e))
     for f in files:
-        found = inline.parse_values(root / f)
-        if found is None or not any(k in found[0] for k in ("AI-Verification", "Verified-by", "Tested-by")):
+        if f == FILENAME:
             continue
-        values, todo = migrate_values(found[0])
+        found = inline.parse_values(root / f)
+        if found is None:
+            continue
+        raw, problems = found
+        is_v1 = any(k in raw for k in ("AI-Verification", "Verified-by", "Tested-by"))
+        if not is_v1 and not (AIR in raw and from_v2):
+            if raw.get(AIR) == "A-":
+                seen_legacy_none.append(f)
+            continue
+        if any("more than one" in pr for pr in problems):
+            several.append(f)
+            continue
+        if is_v1:
+            values, todo = migrate_values(raw)
+            # explicit TODO markers: an inline axis without its level line would otherwise be
+            # filled in from AIDECL.toml, which would claim a review that never happened
+            for key in todo:
+                values[key] = [TODO] if key in LIST_KEYS else TODO
+        else:
+            values = dict(raw)
+            g = raw.get(GEN) or _toml_generation(data if version == 2 else None, f)
+            new, note = map_ai_v2(raw[AIR], g)
+            if new == raw[AIR] and not note:
+                continue
+            values[AIR] = new
+            todo = [AIR] if new == TODO else []
+            if note:
+                notes.append(f"{f}: {note}")
         todos += bool(todo)
-        # explicit TODO markers: an inline axis without its level line would otherwise be
-        # filled in from AIDECL.toml, which would claim a review that never happened
-        for key in todo:
-            values[key] = [TODO] if key in LIST_KEYS else TODO
         values = {k: values[k] for k in KEYS if k in values}
         inline_updates.append((f, values, todo))
-        changes.append(f"{f}: inline tags" + (f" (TODO: add {', '.join(todo)})" if todo else ""))
+        changes.append(f"{f}: inline tags" + (f" (TODO: {', '.join(todo)})" if todo else ""))
+    if several:
+        # converting the rest would leave these on the old scale, read as the new one
+        raise UsageError(f"{', '.join(several)}: more than one inline declaration block (an example of the "
+                         "format counts too). Leave one block per file, then run migrate again. Nothing was changed")
+    if create_toml and inline_updates:
+        new_text = f"# Created by 'aidecl migrate --from 2': inline tags use the AI review scale of version {VERSION}.\nversion = {VERSION}\n"
+        changes.insert(0, f"{FILENAME}: created (version {VERSION})")
 
-    if not changes:
-        print("Nothing to migrate.")
-        return 0
     for w in warnings:
         print(f"warning: {w}")
+    if not changes:
+        print("Nothing to migrate.")
+        if seen_legacy_none:
+            print(f"{len(seen_legacy_none)} file(s) use 'AI-Review: A-' from version 2, e.g. {seen_legacy_none[0]}.")
+            if data is None:
+                print("If all inline tags still use the old scale, run 'aidecl migrate --from 2'.")
+            else:
+                print(f"{FILENAME} is already version {version}: convert the old tags in these files by hand "
+                      "(A- -> A0, A0 -> A1, A1 -> A2).")
+        return 0
     if args.dry_run:
         for c in changes:
             print("would migrate " + c)
+        for n in notes:
+            print(f"note: {n}")
         return 0
-    status = 0
+    # All or nothing: inline tags first (restored if any fails), AIDECL.toml last, so a
+    # partly migrated repository can't be migrated a second time.
+    backups = {}
+    try:
+        for f, values, _ in inline_updates:
+            path = root / f
+            backups[path] = path.read_bytes()
+            inline.write(path, values)
+    except (ValueError, OSError, UnicodeDecodeError) as e:
+        for path, content in backups.items():
+            path.write_bytes(content)
+        raise UsageError(f"{e}. Nothing was changed")
     if new_text is not None:
         target = root / FILENAME
-        old_text = target.read_text(encoding="utf-8")
-        target.write_text(new_text, encoding="utf-8")
+        old_bytes = target.read_bytes() if target.exists() else None
+        target.write_bytes(new_text.encode("utf-8"))
         try:
             load(root)
         except ConfigError as e:
-            target.write_text(old_text, encoding="utf-8")
+            if old_bytes is None:
+                target.unlink()
+            else:
+                target.write_bytes(old_bytes)
+            for path, content in backups.items():
+                path.write_bytes(content)
             raise UsageError(f"the converted {FILENAME} would be invalid ({e}); fix the old file first. "
                              "Nothing was changed")
-    failed = set()
-    for f, values, _ in inline_updates:
-        try:
-            inline.write(root / f, values)
-        except (ValueError, OSError, UnicodeDecodeError) as e:
-            print(f"aidecl migrate: {e}", file=sys.stderr)
-            failed.add(f)
-            status = 1
     for c in changes:
-        if not any(c.startswith(f"{f}: inline tags") for f in failed):
-            print("migrated " + c)
+        print("migrated " + c)
+    for n in notes:
+        print(f"note: {n}")
     if todos:
         print("\nSome declarations need information the old levels don't contain (marked TODO).")
         print("'aidecl lint' fails until they are filled in.")
-    return status
+    return 0
 
 
 # ---------------------------------------------------------------- main
@@ -486,12 +687,12 @@ def _add_values(p: argparse.ArgumentParser, required: bool) -> None:
     p.add_argument("--assisted-by", action="append", metavar="TOOL", help="repeatable (G1-G3)")
     p.add_argument("--reviewed-by", action="append", metavar="PERSON",
                    help="repeatable; the responsible human (always required)")
-    p.add_argument("--ai-reviewed-by", action="append", metavar="MODEL", help="repeatable (A0-A3)")
+    p.add_argument("--ai-reviewed-by", action="append", metavar="MODEL", help="repeatable (A1-A3)")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aidecl", description="Declare and check AI generation (G0-G3), "
-                                     "human review (H0-H3) and AI review (A-, A0-A3) of the files in a repository.")
+                                     "human review (H0-H3) and AI review (A0-A3) of the files in a repository.")
     parser.add_argument("--version", action="version", version=f"aidecl {__version__}")
     parser.add_argument("--root", default=".", help="project root containing AIDECL.toml (default: .)")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -522,8 +723,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--weight", choices=["files", "lines"], default="files")
     p.set_defaults(func=cmd_badge)
 
-    p = sub.add_parser("migrate", help="convert version-1 declarations (V0-V3) to G/H/A")
+    p = sub.add_parser("migrate", help="convert declarations of versions 1 (V0-V3) and 2 (A-, A0-A3)")
     p.add_argument("--dry-run", action="store_true", help="only show what would change")
+    p.add_argument("--from", dest="from_version", type=int, choices=[2],
+                   help="without AIDECL.toml: treat inline G/H/A tags as version 2 and create a version-3 AIDECL.toml "
+                        "that records the conversion")
     p.set_defaults(func=cmd_migrate)
 
     args = parser.parse_args(argv)

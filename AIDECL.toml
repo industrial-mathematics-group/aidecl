@@ -1,10 +1,10 @@
-version = 2
+version = 3
 exclude = []
 
 [[annotations]]
 path = "**"
 AI-Generation = "G3"
-AI-Review = "A1"
+AI-Review = "A2"
 Human-Review = "H1"
 Reviewed-by = "Pascal Jung"
 Assisted-by = ["Claude (Anthropic), claude-opus-5-5"]

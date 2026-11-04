@@ -7,7 +7,7 @@
 **Declare and check how each file was created and reviewed**, using the Industrial Mathematics Group's AI levels:
 - **G0–G3:** how much an AI generated;
 - **H0–H3:** how thoroughly a human reviewed it;
-- **A-, A0–A3:** how independently an AI reviewed it.
+- **A0–A3:** how thoroughly an AI reviewed it.
 
 It works like [REUSE](https://reuse.software) does for licences: a path-based `AIDECL.toml`, optional tags in file headers, and a `lint` command for CI.
 
@@ -23,11 +23,12 @@ The levels are defined in the [AI policy](https://github.com/industrial-mathemat
 
 | Generation | | Human review | | AI review | |
 |---|---|---|---|---|---|
-| **G0** | Human | **H0** | Plausibility check | **A-** | None |
-| **G1** | AI-assisted | **H1** | Tested | **A0** | Self-check by the generating session |
-| **G2** | AI-generated | **H2** | Reviewed line by line | **A1** | Independent session, same model |
-| **G3** | AI-autonomous | **H3** | Independently validated | **A2** | Independent session, different model |
-| | | | | **A3** | Different model with a full benchmark |
+| **G0** | Human | **H0** | Plausibility check | **A0** | None |
+| **G1** | AI-assisted | **H1** | Tested | **A1** | Self-check by the generating session |
+| **G2** | AI-generated | **H2** | Reviewed line by line | **A2** | Review by a new session |
+| **G3** | AI-autonomous | **H3** | Independently validated | **A3** | Extensive review or benchmark by a different model |
+
+For human-written content (G0) there is no generating session, so it can't have A1: any AI review of it is A2 or A3.
 
 ## Install
 
@@ -43,47 +44,47 @@ Requires Python 3.11 or newer; no other dependencies.
 
 ```bash
 # 1. A default for everything (here: written by a human, reviewed line by line, no AI review)
-aidecl init -g G0 -H H2 -a A- --reviewed-by "Jane Doe"
+aidecl init -g G0 -H H2 -a A0 --reviewed-by "Jane Doe"
 
 # 2. Declare what is different, by file, folder or glob
-aidecl annotate results/ -g G2 -H H1 -a A0 \
+aidecl annotate results/ -g G2 -H H1 -a A1 \
     --assisted-by "Claude Opus 5.5 (Anthropic)" \
     --ai-reviewed-by "Claude Opus 5.5 (Anthropic), same session" --reviewed-by "Jane Doe"
 aidecl annotate "scripts/*.jl" -g G1 -H H3 -a A2 --assisted-by "GitHub Copilot" \
-    --ai-reviewed-by "GPT-5 (OpenAI), independent session" --reviewed-by "Jane Doe"
+    --ai-reviewed-by "Claude Opus 5.5 (Anthropic), new session" --reviewed-by "Jane Doe"
 
 # 3. Check that every file is declared correctly
 aidecl lint
 ```
 
-`annotate` refuses incomplete declarations, and anything below the repository's policy (e.g. G2 without `--assisted-by`, or G2 with `-a A-`). It also checks that the resulting `AIDECL.toml` is still valid, and leaves it unchanged if not. Paths are handled like this:
+`annotate` refuses incomplete declarations, and anything below the repository's policy (e.g. G2 without `--assisted-by`, or G2 with `-a A0`). It also checks that the resulting `AIDECL.toml` is still valid, and leaves it unchanged if not. Paths are handled like this:
 - **Files and folders:** existing files are matched exactly, even with `*` or `?` in their name, and a folder becomes `folder/**`.
 - **Globs:** quote them, e.g. `"scripts/*.jl"`. Inside the project they're read relative to the current directory, as the shell would; with `--root` from outside, relative to the root. Globs with `..` or absolute paths are refused.
 
 ## AIDECL.toml
 
 ```toml
-version = 2
+version = 3
 exclude = ["docs/build/**"]              # optional: files that need no declaration
 
 [policy]                                 # optional: minimum levels
 "*" = { human = "H1" }
-G3  = { human = "H2", ai = "A1" }
+G3  = { human = "H2", ai = "A2" }
 
 [[annotations]]
 path = "**"
 AI-Generation = "G0"
 Human-Review = "H2"
-AI-Review = "A-"
+AI-Review = "A0"
 Reviewed-by = "Jane Doe"
 
 [[annotations]]
 path = ["results/**", "figures/*.pdf"]
 AI-Generation = "G2"
 Human-Review = "H3"
-AI-Review = "A2"
+AI-Review = "A3"
 Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
-AI-Reviewed-by = "GPT-5 (OpenAI), independent session"
+AI-Reviewed-by = "GPT-5 (OpenAI), full benchmark against reference solutions"
 Reviewed-by = "Jane Doe"
 ```
 
@@ -100,9 +101,10 @@ Reviewed-by = "Jane Doe"
 | `AI-Generation`, `Human-Review`, `AI-Review` | every file |
 | `Reviewed-by` (the responsible human) | every file |
 | `Assisted-by` | G1–G3; not allowed for G0 |
-| `AI-Reviewed-by` | A0–A3; not allowed for A- |
+| `AI-Reviewed-by` | A1–A3; not allowed for A0 |
 
-- **Minimum levels:** G1–G3 always need at least **A0**: AI-written content must at least be self-checked. The `[policy]` table can require more:
+- **Placeholders:** any value may be `"TODO"`, e.g. `Human-Review = "TODO"` when an agent declares its part and a person adds the human review later. `lint` reports every TODO until it's filled in.
+- **Minimum levels:** G1–G3 always need at least **A1**: AI-written content must at least be self-checked. The `[policy]` table can require more (for G0, a minimum of A1 means A2):
   - `"*"` sets the default for every generation level;
   - `G0`–`G3` refine it per generation level, overriding the `"*"` values key by key.
 - **Which files are checked:**
@@ -117,7 +119,7 @@ Source files and documents can also carry the declaration in a comment within th
 ```julia
 # AI-Generation: G2
 # Human-Review: H2
-# AI-Review: A1
+# AI-Review: A2
 # Assisted-by: Claude Opus 5.5 (Anthropic)
 # AI-Reviewed-by: Claude Opus 5.5 (Anthropic), fresh review session
 # Reviewed-by: Jane Doe
@@ -133,7 +135,7 @@ Three rules keep documentation from being mistaken for a declaration:
 
   Fenced code blocks in Markdown are skipped. File types without a known comment syntax, such as `.txt`, `.csv`, `.json`, notebooks or `LICENSE`, are only declared through `AIDECL.toml`.
 - **Start of the line:** the comment must start the line. Only `*` continuation lines of a `/* */` comment may be indented, so indented examples in docstrings are ignored.
-- **A contiguous block with a valid level:** tag lines count only as a block of adjacent lines that contains a valid level line, such as `AI-Generation: G2` or `AI-Review: A-`. A comment that merely explains the keys, like `#   AI-Generation: G0-G3`, is ignored. `TODO` (left by `aidecl migrate`) also counts as a level here, so a block with an unfilled TODO is found and fails `lint`.
+- **A contiguous block with a valid level:** tag lines count only as a block of adjacent lines that contains a valid level line, such as `AI-Generation: G2` or `AI-Review: A0`. A comment that merely explains the keys, like `#   AI-Generation: G0-G3`, is ignored. `TODO` (left by `aidecl migrate`) also counts as a level here, so a block with an unfilled TODO is found and fails `lint`.
 
 `aidecl annotate FILE … --inline` writes or updates these lines for you:
 - **Placement:** after a shebang, an encoding line, an XML declaration or (in Markdown) YAML front matter.
@@ -154,25 +156,37 @@ Three rules keep documentation from being mistaken for a declaration:
 | `aidecl lint [--strict]` | Fail if any file lacks a valid declaration, falls below the policy, or if no files were found (`--strict`: also on annotations that match nothing) |
 | `aidecl report [--files] [--json]` | Summary per axis, one line per file (with the problems), or JSON; invalid declarations count as "undeclared", as in the badges |
 | `aidecl badge [--out DIR] [--weight files\|lines]` | Write shields.io badges `aidecl-generation.json`, `aidecl-human-review.json` and `aidecl-ai-review.json` |
-| `aidecl migrate [--dry-run]` | Convert declarations of the first version (V0–V3) to G/H/A, see below |
+| `aidecl migrate [--dry-run] [--from 2]` | Convert declarations of earlier versions, see below |
 
 Use `--root DIR` before the command to run on another directory, e.g. `aidecl --root ../paper lint`.
 
 Exit codes: `0` success, `1` problems found by `lint`, `2` usage or configuration errors.
 
-## Migrating from V0–V3
+## Migrating from earlier versions
 
-The first version used one verification axis, V0–V3. `aidecl migrate` rewrites `AIDECL.toml` (version 1 → 2) and inline tags, mapping:
+`aidecl migrate` converts `AIDECL.toml` and the inline tags to version 3, all or nothing. Without `AIDECL.toml`, inline tags with the old AI review scale need `--from 2`; `migrate` points this out when it finds `AI-Review: A-`. `--from 2` then creates a version-3 `AIDECL.toml` without annotations, which records that the tags are converted, so they're never shifted twice. Once `AIDECL.toml` is version 3, `--from 2` is refused.
+
+**From version 2** (AI review A-, A0–A3). The scale moved up by one, so only `AI-Review` (and `ai` in `[policy]`) changes. Comments and layout of `AIDECL.toml` are kept.
 
 | Old | New |
 |---|---|
-| V0 (human, line by line) | H2, and A- for G0 |
-| V1 / V2 (independent agent, same / different model) | A1 / A2 |
-| V3 (human + independent agent) | H2 + A1 |
+| A- (none) | A0 |
+| A0 (self-check) | A1; for G0 a TODO, since human-written content has no self-check |
+| A1 (independent session) | A2 |
+| A2 (different model) | A2, with a note: raise it to A3 if the review was extensive or benchmarked |
+| A3 (different model with benchmark) | A3 |
+
+**From version 1** (one verification axis, V0–V3):
+
+| Old | New |
+|---|---|
+| V0 (human, line by line) | H2, and A0 for G0 |
+| V1 / V2 (independent agent, same / different model) | A2 |
+| V3 (human + independent agent) | H2 + A2 |
 | `Tested-by` | `Reviewed-by` |
 | `Verified-by` | `AI-Reviewed-by` |
 
-What the old levels don't say must be added by a person. Examples are the human review of a V1 file, or the AI review of an AI-written V0 file. `migrate` marks these with a `TODO` comment in `AIDECL.toml` and with a `TODO` value in inline tags (e.g. `# Human-Review: TODO`), and `lint` reports them until they're filled in. Comments in the old `AIDECL.toml` are not carried over.
+What the old levels don't say must be added by a person. Examples are the human review of a V1 file, or the AI review of an AI-written V0 file. `migrate` marks these with a `TODO` comment in `AIDECL.toml` and with a `TODO` value in inline tags (e.g. `# Human-Review: TODO`), and `lint` reports them until they're filled in. When converting version 1, comments in `AIDECL.toml` are not carried over.
 
 ## In CI
 

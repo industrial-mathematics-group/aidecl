@@ -2,19 +2,19 @@
 
 Format::
 
-    version = 2
+    version = 3
     exclude = ["docs/build/**"]          # optional: files that need no declaration
 
     [policy]                             # optional: minimum review levels per generation level
     "*" = { human = "H1" }
-    G3  = { human = "H2", ai = "A1" }
+    G3  = { human = "H2", ai = "A2" }
 
     [[annotations]]
     path = "**"                          # one pattern or a list of patterns
     precedence = "closest"               # optional: "closest" (default) or "override"
     AI-Generation = "G0"
     Human-Review = "H2"
-    AI-Review = "A-"
+    AI-Review = "A0"
     Reviewed-by = "Jane Doe"             # string or list of strings
 """
 from __future__ import annotations
@@ -24,10 +24,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .globbing import compile_glob, matches
-from .model import KEYS, LEVELS, LIST_KEYS, Declaration, Policy, canonical_key, parse_policy
+from .model import KEYS, LEVELS, LIST_KEYS, TODO, Declaration, Policy, canonical_key, parse_policy
 
 FILENAME = "AIDECL.toml"
-VERSION = 2
+VERSION = 3
 PRECEDENCES = ("closest", "override")
 
 
@@ -97,9 +97,10 @@ def load(root: Path) -> Config:
     path = root / FILENAME
 
     version = data.get("version")
-    if type(version) is int and version == 1:
-        raise LegacyConfig(f"{FILENAME} uses version 1 (V0-V3 levels). Run 'aidecl migrate' to convert "
-                           "it to the G/H/A levels of version 2.")
+    if type(version) is int and version in (1, 2):
+        old = "V0-V3 levels" if version == 1 else "the AI review scale A-, A0-A3"
+        raise LegacyConfig(f"{FILENAME} uses version {version} ({old}). Run 'aidecl migrate' to convert "
+                           f"it to version {VERSION}.")
     if type(version) is not int or version != VERSION:
         raise ConfigError(f"{FILENAME}: 'version = {VERSION}' is required")
     unknown = set(data) - {"version", "exclude", "policy", "annotations"}
@@ -141,7 +142,7 @@ def load(root: Path) -> Config:
             else:
                 if not isinstance(v, str):
                     raise ConfigError(f"{where}: '{k}' must be a string")
-                if v not in LEVELS[key]:
+                if v not in LEVELS[key] and v != TODO:  # TODO: placeholder, reported by lint
                     raise ConfigError(f"{where}: invalid {key} '{v}' (use {', '.join(LEVELS[key])})")
                 values[key] = v
         annotations.append(Annotation(index=i, paths=paths, precedence=precedence, values=values))
