@@ -5,7 +5,7 @@
 * ``?``   matches one character except ``/``
 * ``\\*``, ``\\?``, ``\\\\`` match a literal ``*``, ``?`` or backslash
 
-Patterns are relative to the directory of AIDECL.toml and always use ``/``.
+Patterns are relative to the directory of SIGNOFF.toml and always use ``/``.
 """
 from __future__ import annotations
 

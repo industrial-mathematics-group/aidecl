@@ -20,9 +20,22 @@ AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), new sessions without the generat
 
 # Changed after the A2 reviews in reviews/05ff570.md (fixes for their findings): self-checked only.
 [[annotations]]
-path = ["README.md", "src/aidecl/cli.py", "src/aidecl/config.py", "src/aidecl/model.py", "tests/test_aidecl.py"]
+path = ["README.md", "src/aisignoff/cli.py", "src/aisignoff/config.py", "src/aisignoff/model.py", "tests/test_aisignoff.py"]
 AI-Generation = "G3"
 Human-Review = "H1"
+AI-Review = "A1"
+Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
+Reviewed-by = ["Pascal Jung"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
+
+# Rename aidecl -> aisignoff, SIGNOFF.toml with fallback to AIDECL.toml, PyPI publishing (0.4.0).
+# Written by Claude and only self-checked; the human review is still open.
+[[annotations]]
+path = [".github/workflows/ci.yml", ".github/workflows/publish.yml", "README.md", "pyproject.toml", "uv.lock",
+        "src/aisignoff/__init__.py", "src/aisignoff/cli.py", "src/aisignoff/config.py", "src/aisignoff/globbing.py",
+        "src/aisignoff/inline.py", "src/aisignoff/model.py", "src/aisignoff/project.py", "tests/test_aisignoff.py"]
+AI-Generation = "G3"
+Human-Review = "TODO"
 AI-Review = "A1"
 Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
 Reviewed-by = ["Pascal Jung"]

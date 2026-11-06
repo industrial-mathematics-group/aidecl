@@ -41,16 +41,16 @@ LEGACY_KEYS = ("AI-Verification", "Verified-by", "Tested-by")
 #   A2 (different model) -> A2 (A3 now also requires an extensive review or benchmark),
 #   A3 (different model with benchmark) -> A3.
 LEGACY_AI_NONE = "A-"
-# Where the old value turns up, AIDECL.toml is already version 3 (or absent), so 'aidecl migrate'
+# Where the old value turns up, SIGNOFF.toml is already version 3 (or absent), so 'aisignoff migrate'
 # may refuse; say what to write instead.
-LEGACY_AI_HINT = (" (A- is now A0; without AIDECL.toml, 'aidecl migrate --from 2'"
+LEGACY_AI_HINT = (" (A- is now A0; without SIGNOFF.toml, 'aisignoff migrate --from 2'"
                   " converts all old tags, otherwise convert them by hand: A- -> A0, A0 -> A1, A1 -> A2)")
 
 ORDER = {k: i for i, k in enumerate([*HUMAN, *AI])}  # H0<H1<..., A0<A1<...
 
-# Placeholder for a level or name that a person still has to fill in. 'aidecl migrate' writes it
-# where the old levels carry no information, and 'aidecl annotate' accepts it (e.g. -H TODO).
-# It blocks the per-axis fallback to AIDECL.toml and fails lint until a person fills it in.
+# Placeholder for a level or name that a person still has to fill in. 'aisignoff migrate' writes it
+# where the old levels carry no information, and 'aisignoff annotate' accepts it (e.g. -H TODO).
+# It blocks the per-axis fallback to SIGNOFF.toml and fails lint until a person fills it in.
 TODO = "TODO"
 
 
@@ -123,7 +123,7 @@ class Declaration:
     assisted_by: tuple[str, ...] = ()
     reviewed_by: tuple[str, ...] = ()
     ai_reviewed_by: tuple[str, ...] = ()
-    source: str = "none"  # e.g. 'AIDECL.toml [2]', 'inline', 'none'
+    source: str = "none"  # e.g. 'SIGNOFF.toml [2]', 'inline', 'none'
     problems: list[str] = field(default_factory=list)  # parse problems found while reading it
 
     _FIELDS = {GEN: "generation", HUM: "human", AIR: "ai",
@@ -167,7 +167,7 @@ def validate(d: Declaration, policy: Policy | None = None, allow_todo: bool = Fa
     axes that are filled in.
     """
     if d.source == "none":
-        return ["no declaration (not matched by AIDECL.toml and no inline tags)"]
+        return ["no declaration (not matched by SIGNOFF.toml and no inline tags)"]
     errors = list(d.problems)
     for key in KEYS:
         v = d.get(key)

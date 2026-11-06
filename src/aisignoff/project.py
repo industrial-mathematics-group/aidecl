@@ -7,10 +7,10 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import inline
-from .config import FILENAME, Config, load
+from .config import FILENAME, LEGACY_FILENAME, Config, load
 from .model import AXES, Declaration, validate
 
-ALWAYS_SKIPPED = {FILENAME}
+ALWAYS_SKIPPED = {FILENAME, LEGACY_FILENAME}
 
 
 class ProjectError(Exception):
@@ -57,7 +57,7 @@ class FileResult:
 
 
 def _merge_closest(own: Declaration, fallback: Declaration | None) -> Declaration:
-    """Inline tags win per axis; a missing axis is taken from AIDECL.toml.
+    """Inline tags win per axis; a missing axis is taken from SIGNOFF.toml.
 
     The axes are generation (AI-Generation + Assisted-by), human review
     (Human-Review + Reviewed-by) and AI review (AI-Review + AI-Reviewed-by). An axis counts
@@ -81,7 +81,7 @@ def _merge_closest(own: Declaration, fallback: Declaration | None) -> Declaratio
 
 def resolve(root: Path, config: Config, path: str) -> Declaration:
     """Declaration of one file. With precedence "closest" (default), inline tags win and
-    AIDECL.toml fills a missing axis; with "override", the annotation alone counts."""
+    SIGNOFF.toml fills a missing axis; with "override", the annotation alone counts."""
     annotation = config.match(path)
     if annotation is not None and annotation.precedence == "override":
         return annotation.declaration()
