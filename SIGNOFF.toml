@@ -40,3 +40,15 @@ AI-Review = "A1"
 Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
 Reviewed-by = ["blhackslash <dev@blackslash.win>"]
 AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
+
+# Documentation site (MkDocs on GitHub Pages), shorter README, callers of the renamed org workflows.
+# Written by Claude and only self-checked; the human review is still open.
+[[annotations]]
+path = ["README.md", "pyproject.toml", ".gitignore", "mkdocs.yml", "docs/**", ".github/workflows/docs.yml",
+        ".github/workflows/pr-signoff.yml", ".github/workflows/file-signoff.yml", ".github/workflows/signoff-badges.yml"]
+AI-Generation = "G3"
+Human-Review = "TODO"
+AI-Review = "A1"
+Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
