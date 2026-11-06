@@ -1,4 +1,4 @@
-# Builds the documentation (MkDocs, docs/ and mkdocs.yml) on every pull request and
+# Builds the documentation (Zensical, docs/ and zensical.toml) on every pull request and
 # publishes it to GitHub Pages on pushes to main.
 # Needs Settings → Pages → Build and deployment → Source: "GitHub Actions".
 name: Docs
@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r docs/requirements.txt
-      - run: mkdocs build --strict
+      - run: zensical build --clean --strict
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:

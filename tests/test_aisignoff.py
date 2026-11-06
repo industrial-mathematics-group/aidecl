@@ -965,3 +965,16 @@ def test_failed_migrate_keeps_legacy_file(tmp_path):
     assert main(["--root", str(tmp_path), "migrate"]) == 2
     assert (tmp_path / "AIDECL.toml").read_text() == text
     assert not (tmp_path / "SIGNOFF.toml").exists()
+
+
+# ------------------------------------------------------------------ version
+def test_version_comes_from_pyproject():
+    import tomllib
+    from importlib.metadata import PackageNotFoundError, version
+    import aisignoff
+    try:
+        installed = version("aisignoff")
+    except PackageNotFoundError:
+        pytest.skip("aisignoff is not installed")
+    pyproject = tomllib.loads((Path(__file__).parent.parent / "pyproject.toml").read_text())["project"]["version"]
+    assert aisignoff.__version__ == installed == pyproject
