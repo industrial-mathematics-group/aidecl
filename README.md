@@ -3,6 +3,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24020702.svg)](https://doi.org/10.5281/zenodo.24020702)
 [![PyPI](https://img.shields.io/pypi/v/aisignoff.svg)](https://pypi.org/project/aisignoff/)
 [![Docs](https://img.shields.io/badge/docs-online-9558B2.svg)](https://industrial-mathematics-group.github.io/aisignoff/)
+
 [![AI generation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/aisignoff-generation.json)](https://industrial-mathematics-group.github.io/aisignoff/#the-levels)
 [![Human review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/aisignoff-human-review.json)](https://industrial-mathematics-group.github.io/aisignoff/#the-levels)
 [![AI review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/aisignoff-ai-review.json)](https://industrial-mathematics-group.github.io/aisignoff/#the-levels)
