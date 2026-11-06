@@ -12,19 +12,20 @@ Contributions follow the [contributing guidelines](https://github.com/industrial
 
 ## Documentation
 
-The documentation is built with [MkDocs](https://www.mkdocs.org) and the [Material theme](https://squidfunk.github.io/mkdocs-material/), from the Markdown files in `docs/` and the page list in `mkdocs.yml`.
+The documentation is built with [Zensical](https://zensical.org), from the Markdown files in `docs/`. The page order, theme and Markdown extensions are set in `zensical.toml`.
 
 ```bash
 pip install -r docs/requirements.txt
-mkdocs serve          # preview at http://127.0.0.1:8000, reloads on every change
-mkdocs build --strict # what CI runs: fails on broken links
+zensical serve            # preview at http://localhost:8000, reloads on every change
+zensical build --strict   # what CI runs: fails on broken links and anchors
 ```
 
 The *Docs* workflow builds the site on every pull request and publishes it to GitHub Pages on every push to `main`.
 
 ## Releasing
 
-1. Bump the version in `pyproject.toml`, `src/aisignoff/__init__.py` and `uv.lock`.
-2. Publish a GitHub release with the tag `vX.Y.Z`.
+1. Bump the version with `uv version --bump patch` (or `minor`, `major`). This updates `pyproject.toml` and `uv.lock`; the package reads its version from there, so there is no other copy.
+2. Merge that to `main`.
+3. Publish a GitHub release with the tag `vX.Y.Z`, e.g. `gh release create v0.4.3 --generate-notes`.
 
 The *Publish to PyPI* workflow checks that the tag matches the version, runs the tests, builds the package and uploads it through PyPI's trusted publishing. No token is stored in the repository.
