@@ -29,6 +29,7 @@ aisignoff = "aisignoff.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/industrial-mathematics-group/aisignoff"
+Documentation = "https://industrial-mathematics-group.github.io/aisignoff/"
 Issues = "https://github.com/industrial-mathematics-group/aisignoff/issues"
 
 [tool.setuptools.packages.find]
