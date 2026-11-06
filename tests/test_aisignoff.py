@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from aidecl import inline
-from aidecl.cli import badge_json, main, migrate_values, percentages
-from aidecl.config import ConfigError, LegacyConfig, load
-from aidecl.globbing import matches
-from aidecl.model import Declaration, Policy, parse_policy, validate
-from aidecl.project import Project
+from aisignoff import inline
+from aisignoff.cli import badge_json, main, migrate_values, percentages
+from aisignoff.config import ConfigError, LegacyConfig, load
+from aisignoff.globbing import matches
+from aisignoff.model import Declaration, Policy, parse_policy, validate
+from aisignoff.project import Project
 
 
 def write(root: Path, rel: str, text: str = "x\n") -> Path:
@@ -75,7 +75,7 @@ def test_rules(decl, ok):
 
 
 def test_no_declaration():
-    assert validate(Declaration()) == ["no declaration (not matched by AIDECL.toml and no inline tags)"]
+    assert validate(Declaration()) == ["no declaration (not matched by SIGNOFF.toml and no inline tags)"]
 
 
 # ------------------------------------------------------------------ policy
@@ -114,13 +114,13 @@ def test_old_none_level_has_a_hint(tmp_path):
 
 
 def test_old_none_level_hints_dont_loop(tmp_path):
-    # with a version-3 AIDECL.toml, migrate refuses, so the hint must not send people there alone
+    # with a version-3 SIGNOFF.toml, migrate refuses, so the hint must not send people there alone
     errors = validate(d(g="G0", h="H1", a="A-", rev="J"))
     assert any("convert them by hand" in e for e in errors)
     with pytest.raises(ValueError) as e:
         parse_policy({"*": {"ai": "A-"}})
     assert "migrate" not in str(e.value)
-    write(tmp_path, "AIDECL.toml", HEAD + '[[annotations]]\npath = "**"\n' + TOML_G0.replace('"A0"', '"A-"'))
+    write(tmp_path, "SIGNOFF.toml", HEAD + '[[annotations]]\npath = "**"\n' + TOML_G0.replace('"A0"', '"A-"'))
     with pytest.raises(ConfigError, match="A- is now A0"):
         load(tmp_path)
 
@@ -134,7 +134,7 @@ def test_policy_errors(bad):
 
 
 def test_policy_in_config(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + '[policy]\n"*" = { human = "H3" }\n'
+    write(tmp_path, "SIGNOFF.toml", HEAD + '[policy]\n"*" = { human = "H3" }\n'
           f'[[annotations]]\npath = "**"\n{TOML_G0}')
     write(tmp_path, "a.jl")
     (r,) = Project(tmp_path).results()
@@ -157,35 +157,35 @@ def test_config_errors(tmp_path):
         'version = 3\n[[annotations]]\npath = []\n': "must not be empty",
         'version = 3\n[[annotations]]\npath = "**"\nHuman-Review = "H0"\nhuman-review = "H1"\n': "more than once",
         'version = 3\n[policy]\nG7 = { human = "H1" }\n': "unknown key 'G7'",
-        'version = 2\n': "aidecl migrate",
+        'version = 2\n': "aisignoff migrate",
     }
     for text, message in bad.items():
-        (tmp_path / "AIDECL.toml").write_text(text)
+        (tmp_path / "SIGNOFF.toml").write_text(text)
         with pytest.raises(ConfigError, match=message):
             load(tmp_path)
 
 
 def test_version_1_points_to_migrate(tmp_path):
-    (tmp_path / "AIDECL.toml").write_text('version = 1\n')
-    with pytest.raises(LegacyConfig, match="aidecl migrate"):
+    (tmp_path / "SIGNOFF.toml").write_text('version = 1\n')
+    with pytest.raises(LegacyConfig, match="aisignoff migrate"):
         load(tmp_path)
 
 
 def test_last_annotation_wins(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}'
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}'
                                          f'[[annotations]]\npath = "src/**"\n{TOML_G2}')
     write(tmp_path, "README.md")
     write(tmp_path, "src/a.jl")
     res = {r.path: r for r in Project(tmp_path).results()}
     assert res["README.md"].declaration.generation == "G0"
     assert res["src/a.jl"].declaration.generation == "G2"
-    assert res["src/a.jl"].declaration.source == "AIDECL.toml [2]"
+    assert res["src/a.jl"].declaration.source == "SIGNOFF.toml [2]"
     assert all(not r.errors for r in res.values())
-    assert "AIDECL.toml" not in res
+    assert "SIGNOFF.toml" not in res
 
 
 def test_exclude(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + f'exclude = ["build/**"]\n[[annotations]]\npath = "*.md"\n{TOML_G0}')
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'exclude = ["build/**"]\n[[annotations]]\npath = "*.md"\n{TOML_G0}')
     write(tmp_path, "README.md")
     write(tmp_path, "build/out.html")
     assert [r.path for r in Project(tmp_path).results()] == ["README.md"]
@@ -193,7 +193,7 @@ def test_exclude(tmp_path):
 
 # ------------------------------------------------------------------ inline
 def test_inline_closest_and_override(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}'
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}'
                                          f'[[annotations]]\npath = "locked/**"\nprecedence = "override"\n{TOML_G0}')
     header = ("# AI-Generation: G2\n# Human-Review: H3\n# AI-Review: A2\n# Assisted-by: A\n"
               "# AI-Reviewed-by: B\n# Reviewed-by: J\n")
@@ -202,7 +202,7 @@ def test_inline_closest_and_override(tmp_path):
     res = {r.path: r for r in Project(tmp_path).results()}
     assert (res["src/a.jl"].declaration.short(), res["src/a.jl"].declaration.source) == ("G2 H3 A2", "inline")
     assert res["src/a.jl"].errors == []
-    assert res["locked/b.jl"].declaration.source == "AIDECL.toml [2]"
+    assert res["locked/b.jl"].declaration.source == "SIGNOFF.toml [2]"
 
 
 @pytest.mark.parametrize("name,line,found", [
@@ -218,7 +218,7 @@ def test_inline_closest_and_override(tmp_path):
     ("f.jl", "AI-Generation: G1", False),          # not a comment
     ("f.jl", "    # AI-Generation: G1", False),    # indented
     ("f.jl", "x = 1  # AI-Generation: G1", False), # trailing comment after code
-    ("f.txt", "# AI-Generation: G1", False),       # unknown file type: AIDECL.toml only
+    ("f.txt", "# AI-Generation: G1", False),       # unknown file type: SIGNOFF.toml only
     ("LICENSE", "-- AI-Generation: G1", False),
 ])
 def test_inline_needs_comment(tmp_path, name, line, found):
@@ -283,7 +283,7 @@ def test_inline_duplicate(tmp_path):
 
 def test_inline_legacy_keys_flagged(tmp_path):
     p = write(tmp_path, "f.jl", "# AI-Generation: G0\n# AI-Verification: V0\n# Tested-by: J\n")
-    assert any("aidecl migrate" in x for x in inline.parse(p).problems)
+    assert any("aisignoff migrate" in x for x in inline.parse(p).problems)
 
 
 def test_inline_write_roundtrip(tmp_path):
@@ -311,7 +311,7 @@ def test_inline_write_front_matter_and_markdown(tmp_path):
 
 def test_inline_write_unknown_type(tmp_path):
     p = write(tmp_path, "results.csv", "a,b\n")
-    with pytest.raises(ValueError, match="AIDECL.toml"):
+    with pytest.raises(ValueError, match="SIGNOFF.toml"):
         inline.write(p, VALS_G0)
 
 
@@ -343,7 +343,7 @@ def test_yaml_documents_are_not_front_matter(tmp_path):
 def test_long_front_matter_is_refused(tmp_path):
     p = write(tmp_path, "post.md", "---\n" + "a: 1\n" * 40 + "---\ntext\n")
     before = p.read_bytes()
-    with pytest.raises(ValueError, match="AIDECL.toml"):
+    with pytest.raises(ValueError, match="SIGNOFF.toml"):
         inline.write(p, VALS_G0)
     assert p.read_bytes() == before
 
@@ -366,17 +366,17 @@ def test_markdown_fences(tmp_path):
 
 
 def test_closest_fills_missing_axes(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G2}')
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G2}')
     write(tmp_path, "a.jl", "# Human-Review: H3\n# Reviewed-by: Bob\n\nf() = 1\n")
     (r,) = [r for r in Project(tmp_path).results() if r.path == "a.jl"]
     dd = r.declaration
     assert dd.short() == "G2 H3 A2"
     assert dd.reviewed_by == ("Bob",) and dd.assisted_by == ("Model A",)
-    assert r.errors == [] and dd.source == "inline + AIDECL.toml [1]"
+    assert r.errors == [] and dd.source == "inline + SIGNOFF.toml [1]"
 
 
 def test_inline_stray_list_keys_are_errors(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}')
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}')
     write(tmp_path, "a.jl", "# Human-Review: H1\n# Reviewed-by: J\n# Assisted-by: Copilot\n")
     (r,) = [r for r in Project(tmp_path).results() if r.path == "a.jl"]
     assert "inline Assisted-by without an inline AI-Generation line" in r.errors
@@ -388,7 +388,7 @@ def test_git_respects_gitignore(tmp_path):
     write(tmp_path, ".gitignore", "*.log\n")
     write(tmp_path, "a.jl")
     write(tmp_path, "debug.log")
-    write(tmp_path, "AIDECL.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}')
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}')
     assert [r.path for r in Project(tmp_path).results()] == [".gitignore", "a.jl"]
 
 
@@ -425,13 +425,13 @@ def test_cli_workflow(tmp_path, capsys):
 
     out = tmp_path / "badges"
     assert main(["--root", root, "badge", "--out", str(out)]) == 0
-    assert json.loads((out / "aidecl-generation.json").read_text())["message"] == "G0 67% · G2 33%"
-    assert json.loads((out / "aidecl-human-review.json").read_text())["message"] == "H1 33% · H2 67%"
-    assert json.loads((out / "aidecl-ai-review.json").read_text())["message"] == "A0 67% · A2 33%"
+    assert json.loads((out / "aisignoff-generation.json").read_text())["message"] == "G0 67% · G2 33%"
+    assert json.loads((out / "aisignoff-human-review.json").read_text())["message"] == "H1 33% · H2 67%"
+    assert json.loads((out / "aisignoff-ai-review.json").read_text())["message"] == "A0 67% · A2 33%"
 
 
 def test_annotate_respects_policy(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + '[policy]\n"*" = { human = "H2" }\n')
+    write(tmp_path, "SIGNOFF.toml", HEAD + '[policy]\n"*" = { human = "H2" }\n')
     write(tmp_path, "a.txt")
     assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.txt"),
                  "-g", "G0", "-H", "H1", "-a", "A0", "--reviewed-by", "J"]) == 2
@@ -459,7 +459,7 @@ def test_annotate_keeps_escapes_and_escapes_literals(tmp_path, monkeypatch):
     assert main(["annotate", "a[1].txt", *ARGS_G0]) == 0
     assert [a.paths[0] for a in load(tmp_path).annotations] == ["what\\?.txt", "star\\*.txt", "a[1].txt"]
     res = {r.path: r.declaration.source for r in Project(tmp_path).results()}
-    assert res["whatZ.txt"] == "none" and res["star*.txt"] == "AIDECL.toml [2]"
+    assert res["whatZ.txt"] == "none" and res["star*.txt"] == "SIGNOFF.toml [2]"
 
 
 def test_annotate_glob_relative_to_cwd(tmp_path, monkeypatch):
@@ -477,7 +477,7 @@ def test_annotate_bad_globs_refused(tmp_path, monkeypatch):
     assert main(["--root", "..", "annotate", "../*.jl", *ARGS_G0]) == 2
     assert main(["--root", "..", "annotate", str(tmp_path) + "/*.jl", *ARGS_G0]) == 2
     assert main(["--root", "..", "annotate", "missing.jl", *ARGS_G0]) == 2
-    assert not (tmp_path / "AIDECL.toml").exists()
+    assert not (tmp_path / "SIGNOFF.toml").exists()
 
 
 def test_annotate_through_symlinked_root(tmp_path, monkeypatch):
@@ -505,7 +505,7 @@ def test_annotate_rejects_control_characters(tmp_path, bad):
     write(tmp_path, "a.py", "x = 1\n")
     args = ["-g", "G0", "-H", "H2", "-a", "A0", "--reviewed-by", bad]
     assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), *args]) == 2
-    assert not (tmp_path / "AIDECL.toml").exists()
+    assert not (tmp_path / "SIGNOFF.toml").exists()
     assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), "--inline", *args]) == 2
     assert (tmp_path / "a.py").read_text() == "x = 1\n"
 
@@ -517,7 +517,7 @@ def test_inline_with_precedence_refused(tmp_path):
 
 
 def test_lint_reports_undeclared_and_unused(tmp_path, capsys):
-    write(tmp_path, "AIDECL.toml", HEAD + f'[[annotations]]\npath = "*.md"\n{TOML_G0}'
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'[[annotations]]\npath = "*.md"\n{TOML_G0}'
                                          f'[[annotations]]\npath = "nothing/**"\n{TOML_G0}')
     write(tmp_path, "README.md")
     write(tmp_path, "src/a.jl")
@@ -525,7 +525,7 @@ def test_lint_reports_undeclared_and_unused(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "no declaration" in out and "src/a.jl" in out
     assert "annotation [2] matches no file" in out
-    write(tmp_path, "AIDECL.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}'
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}'
                                          f'[[annotations]]\npath = "nothing/**"\n{TOML_G0}')
     assert main(["--root", str(tmp_path), "lint"]) == 0
     assert main(["--root", str(tmp_path), "lint", "--strict"]) == 1
@@ -538,13 +538,13 @@ def test_lint_missing_root_and_empty(tmp_path):
 
 
 def test_report_and_badge_agree(tmp_path, capsys):
-    write(tmp_path, "AIDECL.toml", HEAD + '[[annotations]]\npath = "**"\nAI-Generation = "G2"\n'
+    write(tmp_path, "SIGNOFF.toml", HEAD + '[[annotations]]\npath = "**"\nAI-Generation = "G2"\n'
                                          'Human-Review = "H1"\nAI-Review = "A1"\nReviewed-by = "J"\n')
     write(tmp_path, "a.txt")
     assert main(["--root", str(tmp_path), "report"]) == 0
     assert "undeclared" in capsys.readouterr().out
     assert main(["--root", str(tmp_path), "badge", "--out", str(tmp_path / "b")]) == 0
-    assert "undeclared 100%" in (tmp_path / "b" / "aidecl-generation.json").read_text()
+    assert "undeclared 100%" in (tmp_path / "b" / "aisignoff-generation.json").read_text()
 
 
 # ------------------------------------------------------------------ badges
@@ -580,20 +580,20 @@ def test_migrate_values(old, new, todo):
 
 
 def test_migrate_command(tmp_path, capsys):
-    write(tmp_path, "AIDECL.toml", 'version = 1\nexclude = ["build/**"]\n[[annotations]]\npath = "**"\n'
+    write(tmp_path, "SIGNOFF.toml", 'version = 1\nexclude = ["build/**"]\n[[annotations]]\npath = "**"\n'
                                    'AI-Generation = "G0"\nAI-Verification = "V0"\nTested-by = "Jane"\n'
                                    '[[annotations]]\npath = "results/**"\nAI-Generation = "G2"\n'
                                    'AI-Verification = "V1"\nAssisted-by = "M"\nVerified-by = "M, fresh"\n')
     write(tmp_path, "results/r.csv")
     write(tmp_path, "src/a.jl", "# AI-Generation: G0\n# AI-Verification: V0\n# Tested-by: Bob\n\nf() = 1\n")
     assert main(["--root", str(tmp_path), "migrate", "--dry-run"]) == 0
-    assert "version = 1" in (tmp_path / "AIDECL.toml").read_text()            # dry run changes nothing
+    assert "version = 1" in (tmp_path / "SIGNOFF.toml").read_text()            # dry run changes nothing
     assert main(["--root", str(tmp_path), "migrate"]) == 0
     cfg = load(tmp_path)
     assert cfg.exclude == ("build/**",)
     assert cfg.annotations[0].values["Human-Review"] == "H2"
     assert cfg.annotations[1].values["AI-Review"] == "A2"
-    assert "TODO after migration: add Human-Review, Reviewed-by" in (tmp_path / "AIDECL.toml").read_text()
+    assert "TODO after migration: add Human-Review, Reviewed-by" in (tmp_path / "SIGNOFF.toml").read_text()
     a = inline.parse(tmp_path / "src/a.jl")
     assert a.short() == "G0 H2 A0" and a.reviewed_by == ("Bob",) and a.problems == []
     assert (tmp_path / "src/a.jl").read_text().endswith("\nf() = 1\n")
@@ -607,7 +607,7 @@ def test_migrate_command(tmp_path, capsys):
 
 # ------------------------------------------------------------------ regressions from the G/H/A review
 def test_migrate_inline_does_not_inherit_reviews(tmp_path):
-    write(tmp_path, "AIDECL.toml", 'version = 1\n[[annotations]]\npath = "**"\nAI-Generation = "G0"\n'
+    write(tmp_path, "SIGNOFF.toml", 'version = 1\n[[annotations]]\npath = "**"\nAI-Generation = "G0"\n'
                                    'AI-Verification = "V3"\nTested-by = "Jane"\nVerified-by = "Claude"\n')
     write(tmp_path, "a.py", "# AI-Generation: G2\n# AI-Verification: V1\n# Assisted-by: M\n# Verified-by: M2\n")
     write(tmp_path, "b.py", "# AI-Generation: G2\n# AI-Verification: V0\n# Assisted-by: M\n# Tested-by: Bob\n")
@@ -628,13 +628,13 @@ def test_migrate_inline_does_not_inherit_reviews(tmp_path):
 
 def test_migrate_robustness(tmp_path, capsys):
     write(tmp_path, "a.txt")
-    (tmp_path / "AIDECL.toml").write_text('version = 1\n[[annotations]]\nAI-Generation = "G0"\n')
+    (tmp_path / "SIGNOFF.toml").write_text('version = 1\n[[annotations]]\nAI-Generation = "G0"\n')
     assert main(["--root", str(tmp_path), "migrate"]) == 2                     # no path: clear error
     old = 'version = 1\n[[annotations]]\npath = "**"\nAI-Generation = "G7"\nAI-Verification = "V0"\nTested-by = "J"\n'
-    (tmp_path / "AIDECL.toml").write_text(old)
+    (tmp_path / "SIGNOFF.toml").write_text(old)
     assert main(["--root", str(tmp_path), "migrate"]) == 2                     # would be invalid
-    assert (tmp_path / "AIDECL.toml").read_text() == old                       # left unchanged
-    (tmp_path / "AIDECL.toml").write_text('version = 1\n[[annotations]]\npath = "**"\nAI-Generation = "G0"\n'
+    assert (tmp_path / "SIGNOFF.toml").read_text() == old                       # left unchanged
+    (tmp_path / "SIGNOFF.toml").write_text('version = 1\n[[annotations]]\npath = "**"\nAI-Generation = "G0"\n'
                                           'AI-Verification = "V0"\nTested-by = "J"\nNote = "x"\n')
     capsys.readouterr()
     assert main(["--root", str(tmp_path), "migrate"]) == 0
@@ -642,7 +642,7 @@ def test_migrate_robustness(tmp_path, capsys):
 
 
 def test_policy_array_is_a_clean_error(tmp_path):
-    (tmp_path / "AIDECL.toml").write_text('version = 3\n[policy]\n"*" = { human = ["H1"] }\n')
+    (tmp_path / "SIGNOFF.toml").write_text('version = 3\n[policy]\n"*" = { human = ["H1"] }\n')
     with pytest.raises(ConfigError, match="human must be one of"):
         load(tmp_path)
     write(tmp_path, "a.txt")
@@ -650,11 +650,11 @@ def test_policy_array_is_a_clean_error(tmp_path):
 
 
 def test_badge_labels(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}')
+    write(tmp_path, "SIGNOFF.toml", HEAD + f'[[annotations]]\npath = "**"\n{TOML_G0}')
     write(tmp_path, "a.txt")
     assert main(["--root", str(tmp_path), "badge", "--out", str(tmp_path / "b")]) == 0
     labels = [json.loads((tmp_path / "b" / f).read_text())["label"]
-              for f in ("aidecl-generation.json", "aidecl-human-review.json", "aidecl-ai-review.json")]
+              for f in ("aisignoff-generation.json", "aisignoff-human-review.json", "aisignoff-ai-review.json")]
     assert labels == ["AI generation", "human review", "AI review"]
 
 
@@ -664,7 +664,7 @@ def test_annotate_inline_missing_file(tmp_path, capsys):
 
 
 def test_todo_placeholder_in_toml(tmp_path, capsys):
-    (tmp_path / "AIDECL.toml").write_text(
+    (tmp_path / "SIGNOFF.toml").write_text(
         'version = 3\n[[annotations]]\npath = "**"\nAI-Generation = "G3"\nHuman-Review = "TODO"\n'
         'AI-Review = "A2"\nAssisted-by = "M"\nAI-Reviewed-by = "M, fresh"\nReviewed-by = "TODO"\n')
     (tmp_path / "a.jl").write_text("x = 1\n")
@@ -680,7 +680,7 @@ AGENT_TODO = ["-g", "G2", "-H", "TODO", "-a", "A1", "--assisted-by", "Model A",
 
 
 def test_annotate_todo_placeholder(tmp_path, capsys):
-    write(tmp_path, "AIDECL.toml", HEAD)
+    write(tmp_path, "SIGNOFF.toml", HEAD)
     write(tmp_path, "a.py")
     assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), *AGENT_TODO]) == 0
     a = load(tmp_path).annotations[0]
@@ -707,11 +707,11 @@ def test_annotate_todo_still_checks_other_axes(tmp_path):
     assert main([*base, "-g", "G2", "-a", "A1", "--ai-reviewed-by", "M"]) == 2
     assert main([*base, "-g", "G2", "-a", "A0", "--assisted-by", "M"]) == 2
     assert main([*base, "-g", "G0", "-a", "A1", "--ai-reviewed-by", "M"]) == 2
-    assert not (tmp_path / "AIDECL.toml").exists()
+    assert not (tmp_path / "SIGNOFF.toml").exists()
 
 
 def test_annotate_todo_respects_ai_policy(tmp_path):
-    write(tmp_path, "AIDECL.toml", HEAD + '[policy]\nG2 = { human = "H2", ai = "A2" }\n')
+    write(tmp_path, "SIGNOFF.toml", HEAD + '[policy]\nG2 = { human = "H2", ai = "A2" }\n')
     write(tmp_path, "a.py")
     base = ["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), "-g", "G2", "-H", "TODO",
             "--assisted-by", "M"]
@@ -775,7 +775,7 @@ Reviewed-by = "Jane"
 
 def test_migrate_v2(tmp_path, capsys):
     import tomllib
-    write(tmp_path, "AIDECL.toml", V2_TOML)
+    write(tmp_path, "SIGNOFF.toml", V2_TOML)
     write(tmp_path, "src/a.py", "# AI-Generation: G1\n# Human-Review: H1\n# AI-Review: A1\n# Assisted-by: M\n"
                                 "# AI-Reviewed-by: M, fresh\n# Reviewed-by: J\nx = 1\n")
     write(tmp_path, "paper/p.tex", "x\n")
@@ -783,10 +783,10 @@ def test_migrate_v2(tmp_path, capsys):
     write(tmp_path, "README.md", "x\n")
     root = str(tmp_path)
     assert main(["--root", root, "migrate", "--dry-run"]) == 0
-    assert "version = 2" in (tmp_path / "AIDECL.toml").read_text()
+    assert "version = 2" in (tmp_path / "SIGNOFF.toml").read_text()
     assert main(["--root", root, "migrate"]) == 0
     out = capsys.readouterr().out
-    text = (tmp_path / "AIDECL.toml").read_text()
+    text = (tmp_path / "SIGNOFF.toml").read_text()
     assert "# our declarations" in text and "# nobody asked an AI" in text and "# different model" in text
     data = tomllib.loads(text)
     assert data["version"] == 3
@@ -817,9 +817,9 @@ def test_migrate_v2_inline_only(tmp_path, capsys):
 def test_migrate_v2_unusual_layout_is_refused(tmp_path):
     text = 'version = 2\nannotations = [{ path = "**", AI-Generation = "G0", Human-Review = "H1", ' \
            'AI-Review = "A-", Reviewed-by = "J" }]\n'
-    write(tmp_path, "AIDECL.toml", text)
+    write(tmp_path, "SIGNOFF.toml", text)
     assert main(["--root", str(tmp_path), "migrate"]) == 2
-    assert (tmp_path / "AIDECL.toml").read_text() == text
+    assert (tmp_path / "SIGNOFF.toml").read_text() == text
 
 
 def test_migrate_from_2_runs_only_once(tmp_path, capsys):
@@ -827,7 +827,7 @@ def test_migrate_from_2_runs_only_once(tmp_path, capsys):
                             "# AI-Reviewed-by: M, same session\n# Reviewed-by: J\n")
     root = str(tmp_path)
     assert main(["--root", root, "migrate", "--from", "2"]) == 0
-    assert "version = 3" in (tmp_path / "AIDECL.toml").read_text()
+    assert "version = 3" in (tmp_path / "SIGNOFF.toml").read_text()
     assert main(["--root", root, "migrate", "--from", "2"]) == 2       # refused: already version 3
     assert main(["--root", root, "migrate"]) == 0
     assert "# AI-Review: A1" in (tmp_path / "a.py").read_text()          # shifted exactly once
@@ -835,7 +835,7 @@ def test_migrate_from_2_runs_only_once(tmp_path, capsys):
 
 
 def test_migrate_v2_inline_uses_toml_generation(tmp_path, capsys):
-    write(tmp_path, "AIDECL.toml", 'version = 2\n[[annotations]]\npath = "**"\nAI-Generation = "G0"\n'
+    write(tmp_path, "SIGNOFF.toml", 'version = 2\n[[annotations]]\npath = "**"\nAI-Generation = "G0"\n'
                                   'Human-Review = "H2"\nAI-Review = "A-"\nReviewed-by = "J"\n')
     write(tmp_path, "a.py", "# AI-Review: A0\n# AI-Reviewed-by: M, same session\n")
     assert main(["--root", str(tmp_path), "migrate"]) == 0
@@ -844,11 +844,11 @@ def test_migrate_v2_inline_uses_toml_generation(tmp_path, capsys):
 
 def test_migrate_refuses_several_blocks(tmp_path, capsys):
     toml = 'version = 2\n[[annotations]]\npath = "**"\nAI-Generation = "G0"\nHuman-Review = "H2"\nAI-Review = "A-"\nReviewed-by = "J"\n'
-    write(tmp_path, "AIDECL.toml", toml)
+    write(tmp_path, "SIGNOFF.toml", toml)
     src = "# AI-Generation: G1\n# AI-Review: A0\n# Assisted-by: M\n# AI-Reviewed-by: M\n\n# Example:\n# AI-Review: A-\n"
     write(tmp_path, "a.py", src)
     assert main(["--root", str(tmp_path), "migrate"]) == 2
-    assert (tmp_path / "AIDECL.toml").read_text() == toml and (tmp_path / "a.py").read_text() == src
+    assert (tmp_path / "SIGNOFF.toml").read_text() == toml and (tmp_path / "a.py").read_text() == src
 
 
 def test_migrate_v2_keeps_comments_crlf_and_skips_itself(tmp_path, capsys):
@@ -856,26 +856,26 @@ def test_migrate_v2_keeps_comments_crlf_and_skips_itself(tmp_path, capsys):
             '"*" = { "ai" = "A0" }  # we used to require ai = "A0"\r\n[[annotations]]\r\npath = "**"\r\n'
             'AI-Generation = "G2"\r\nHuman-Review = "H1"\r\nAI-Review = "A2"\r\nAssisted-by = "M"\r\n'
             'AI-Reviewed-by = "N"\r\nReviewed-by = "J"\r\n')
-    (tmp_path / "AIDECL.toml").write_bytes(text.encode())
+    (tmp_path / "SIGNOFF.toml").write_bytes(text.encode())
     write(tmp_path, "a.jl", "x\n")
     assert main(["--root", str(tmp_path), "migrate"]) == 0
-    new = (tmp_path / "AIDECL.toml").read_bytes().decode()
+    new = (tmp_path / "SIGNOFF.toml").read_bytes().decode()
     assert "# AI-Review: A0\r\n" in new and '# we used to require ai = "A0"' in new
     assert '"*" = { "ai" = "A1" }' in new and 'AI-Review = "A2"' in new
     assert "\n" not in new.replace("\r\n", "")                        # no bare LF
-    assert "AIDECL.toml: inline tags" not in capsys.readouterr().out
+    assert "SIGNOFF.toml: inline tags" not in capsys.readouterr().out
 
 
 def test_annotate_todo_human_adds_reviewed_by_todo(tmp_path):
     write(tmp_path, "a.py")
     assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"),
                  "-g", "G2", "-H", "TODO", "-a", "A1", "--assisted-by", "M", "--ai-reviewed-by", "M"]) == 0
-    toml = (tmp_path / "AIDECL.toml").read_text()
+    toml = (tmp_path / "SIGNOFF.toml").read_text()
     assert 'Reviewed-by = ["TODO"]' in toml
     # a name given on the command line is kept
     assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), "-g", "G2", "-H", "TODO",
                  "-a", "A1", "--assisted-by", "M", "--ai-reviewed-by", "M", "--reviewed-by", "Jane"]) == 0
-    assert 'Reviewed-by = ["Jane"]' in (tmp_path / "AIDECL.toml").read_text()
+    assert 'Reviewed-by = ["Jane"]' in (tmp_path / "SIGNOFF.toml").read_text()
 
 
 def test_annotate_inline_refuses_files_outside_root(tmp_path, monkeypatch, capsys):
@@ -893,4 +893,75 @@ def test_annotate_inline_refuses_files_outside_root(tmp_path, monkeypatch, capsy
 
 def test_init_suggests_excluding_reviews(tmp_path):
     assert main(["--root", str(tmp_path), "init"]) == 0
-    assert "reviews/**" in (tmp_path / "AIDECL.toml").read_text()
+    assert "reviews/**" in (tmp_path / "SIGNOFF.toml").read_text()
+
+
+# ------------------------------------------------------------------ AIDECL.toml (name before aisignoff)
+def test_legacy_filename_is_read_with_a_warning(tmp_path, capsys):
+    write(tmp_path, "AIDECL.toml", HEAD + '[[annotations]]\npath = "**"\n' + TOML_G0)
+    write(tmp_path, "a.py")
+    assert main(["--root", str(tmp_path), "lint"]) == 0
+    out = capsys.readouterr()
+    assert "1 of 1 files" in out.out                      # AIDECL.toml itself is not checked
+    assert "aisignoff migrate" in out.err
+    assert Project(tmp_path).results()[0].declaration.source == "AIDECL.toml [1]"
+
+
+def test_both_filenames_are_an_error(tmp_path):
+    write(tmp_path, "AIDECL.toml", HEAD)
+    write(tmp_path, "SIGNOFF.toml", HEAD)
+    with pytest.raises(ConfigError, match="both"):
+        load(tmp_path)
+    assert main(["--root", str(tmp_path), "migrate"]) == 2
+
+
+def test_init_refuses_next_to_legacy_file(tmp_path, capsys):
+    write(tmp_path, "AIDECL.toml", HEAD)
+    assert main(["--root", str(tmp_path), "init"]) == 2
+    assert "migrate" in capsys.readouterr().err
+    assert not (tmp_path / "SIGNOFF.toml").exists()
+
+
+def test_annotate_appends_to_legacy_file(tmp_path):
+    write(tmp_path, "AIDECL.toml", HEAD)
+    write(tmp_path, "a.py")
+    assert main(["--root", str(tmp_path), "annotate", str(tmp_path / "a.py"), *ARGS_G0]) == 0
+    assert "[[annotations]]" in (tmp_path / "AIDECL.toml").read_text()
+    assert not (tmp_path / "SIGNOFF.toml").exists()
+
+
+def test_migrate_renames_legacy_file(tmp_path, capsys):
+    text = "# keep this comment\n" + HEAD + '[[annotations]]\npath = "**"\n' + TOML_G0
+    write(tmp_path, "AIDECL.toml", text)
+    write(tmp_path, "a.py")
+    assert main(["--root", str(tmp_path), "migrate", "--dry-run"]) == 0
+    assert "AIDECL.toml -> SIGNOFF.toml" in capsys.readouterr().out
+    assert (tmp_path / "AIDECL.toml").exists()
+    assert main(["--root", str(tmp_path), "migrate"]) == 0
+    assert not (tmp_path / "AIDECL.toml").exists()
+    assert (tmp_path / "SIGNOFF.toml").read_text() == text   # content unchanged
+    capsys.readouterr()
+    assert main(["--root", str(tmp_path), "lint"]) == 0
+    assert "AIDECL" not in capsys.readouterr().err
+    assert main(["--root", str(tmp_path), "migrate"]) == 0
+    assert "Nothing to migrate" in capsys.readouterr().out
+
+
+def test_migrate_converts_and_renames_version_2(tmp_path):
+    write(tmp_path, "AIDECL.toml", 'version = 2\n[[annotations]]\npath = "**"\n'
+          'AI-Generation = "G2"\nHuman-Review = "H1"\nAI-Review = "A1"\nAssisted-by = ["M"]\n'
+          'AI-Reviewed-by = "M, fresh session"\nReviewed-by = "Jane"\n')
+    write(tmp_path, "a.py")
+    assert main(["--root", str(tmp_path), "migrate"]) == 0
+    assert not (tmp_path / "AIDECL.toml").exists()
+    new = (tmp_path / "SIGNOFF.toml").read_text()
+    assert "version = 3" in new and 'AI-Review = "A2"' in new
+
+
+def test_failed_migrate_keeps_legacy_file(tmp_path):
+    text = "version = 7\n"
+    write(tmp_path, "AIDECL.toml", text)
+    write(tmp_path, "a.py")
+    assert main(["--root", str(tmp_path), "migrate"]) == 2
+    assert (tmp_path / "AIDECL.toml").read_text() == text
+    assert not (tmp_path / "SIGNOFF.toml").exists()

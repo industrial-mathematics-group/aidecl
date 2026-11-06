@@ -1,29 +1,31 @@
-# aidecl
+# aisignoff
 
-[![AI generation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/ai-generation.json)](https://github.com/industrial-mathematics-group/.github/blob/main/.github/CONTRIBUTING.md#g-generation)
-[![Human review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/ai-human-review.json)](https://github.com/industrial-mathematics-group/.github/blob/main/.github/CONTRIBUTING.md#h-human-review)
-[![AI review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/ai-review.json)](https://github.com/industrial-mathematics-group/.github/blob/main/.github/CONTRIBUTING.md#a-ai-review)
+[![AI generation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/ai-generation.json)](https://github.com/industrial-mathematics-group/.github/blob/main/.github/CONTRIBUTING.md#g-generation)
+[![Human review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/ai-human-review.json)](https://github.com/industrial-mathematics-group/.github/blob/main/.github/CONTRIBUTING.md#h-human-review)
+[![AI review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/ai-review.json)](https://github.com/industrial-mathematics-group/.github/blob/main/.github/CONTRIBUTING.md#a-ai-review)
 
-![AI generation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/aidecl-generation.json)
-![Human review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/aidecl-human-review.json)
-![AI review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aidecl/badges/aidecl-ai-review.json)
+![AI generation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/aisignoff-generation.json)
+![Human review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/aisignoff-human-review.json)
+![AI review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/aisignoff/badges/aisignoff-ai-review.json)
 
 **Declare and check how each file was created and reviewed**, using the Industrial Mathematics Group's AI levels:
 - **G0–G3:** how much an AI generated;
 - **H0–H3:** how thoroughly a human reviewed it;
 - **A0–A3:** how thoroughly an AI reviewed it.
 
-It works like [REUSE](https://reuse.software) does for licences: a path-based `AIDECL.toml`, optional tags in file headers, and a `lint` command for CI.
+The name is meant both ways: the AI signs off on what it generated or reviewed, and so does the human ("ai", said in German, sounds like "I"). It's a declaration you sign off on, not a cryptographic signature.
+
+It works like [REUSE](https://reuse.software) does for licences: a path-based `SIGNOFF.toml`, optional tags in file headers, and a `lint` command for CI.
 
 It complements the declaration in pull requests, where the levels are ticked in the PR template:
 
-| | PR declaration | `AIDECL.toml` |
+| | PR declaration | `SIGNOFF.toml` |
 |---|---|---|
 | Describes | each **change** merged into `main` | the **current state** of every file |
 | Good for | code developed through pull requests | results, data, notebooks, papers, single-commit uploads |
-| Checked by | the *AI declaration* PR check | `aidecl lint` |
+| Checked by | the *AI declaration* PR check | `aisignoff lint` |
 
-The keys of `AIDECL.toml` and the inline tags are the same ones the PR check shows in its job summary.
+The keys of `SIGNOFF.toml` and the inline tags are the same ones the PR check shows in its job summary.
 
 The levels are defined in the [AI policy](https://github.com/industrial-mathematics-group/.github/blob/main/.github/CONTRIBUTING.md#ai-assisted-contributions):
 
@@ -39,10 +41,12 @@ For human-written content (G0) there is no generating session, so it can't have 
 ## Install
 
 ```bash
-pip install "aidecl @ git+https://github.com/industrial-mathematics-group/aidecl"
+pip install aisignoff
 # or, without touching your environment:
-pipx install "git+https://github.com/industrial-mathematics-group/aidecl"
+pipx install aisignoff      # or: uv tool install aisignoff
 ```
+
+The latest development version: `pip install "aisignoff @ git+https://github.com/industrial-mathematics-group/aisignoff"`.
 
 Requires Python 3.11 or newer; no other dependencies.
 
@@ -50,25 +54,25 @@ Requires Python 3.11 or newer; no other dependencies.
 
 ```bash
 # 1. A default for everything (here: written by a human, reviewed line by line, no AI review)
-aidecl init -g G0 -H H2 -a A0 --reviewed-by "Jane Doe"
+aisignoff init -g G0 -H H2 -a A0 --reviewed-by "Jane Doe"
 
 # 2. Declare what is different, by file, folder or glob
-aidecl annotate results/ -g G2 -H H1 -a A1 \
+aisignoff annotate results/ -g G2 -H H1 -a A1 \
     --assisted-by "Claude Opus 5.5 (Anthropic)" \
     --ai-reviewed-by "Claude Opus 5.5 (Anthropic), same session" --reviewed-by "Jane Doe"
-aidecl annotate "scripts/*.jl" -g G1 -H H3 -a A2 --assisted-by "GitHub Copilot" \
+aisignoff annotate "scripts/*.jl" -g G1 -H H3 -a A2 --assisted-by "GitHub Copilot" \
     --ai-reviewed-by "Claude Opus 5.5 (Anthropic), new session" --reviewed-by "Jane Doe"
 
 # 3. Check that every file is declared correctly
-aidecl lint
+aisignoff lint
 ```
 
-`annotate` refuses incomplete declarations, and anything below the repository's policy (e.g. G2 without `--assisted-by`, or G2 with `-a A0`). It also checks that the resulting `AIDECL.toml` is still valid, and leaves it unchanged if not. Paths are handled like this:
+`annotate` refuses incomplete declarations, and anything below the repository's policy (e.g. G2 without `--assisted-by`, or G2 with `-a A0`). It also checks that the resulting `SIGNOFF.toml` is still valid, and leaves it unchanged if not. Paths are handled like this:
 - **Inside the project root:** files outside `--root` are refused, also with `--inline`.
 - **Files and folders:** existing files are matched exactly, even with `*` or `?` in their name, and a folder becomes `folder/**`.
 - **Globs:** quote them, e.g. `"scripts/*.jl"`. Inside the project they're read relative to the current directory, as the shell would; with `--root` from outside, relative to the root. Globs with `..` or absolute paths are refused.
 
-## AIDECL.toml
+## SIGNOFF.toml
 
 ```toml
 version = 3
@@ -115,9 +119,9 @@ Reviewed-by = "Jane Doe"
   - `"*"` sets the default for every generation level;
   - `G0`–`G3` refine it per generation level, overriding the `"*"` values key by key.
 - **Which files are checked:**
-  - **In a git repository:** all tracked files plus untracked files that aren't ignored, so `.gitignore` is respected. If git can't be run there, aidecl stops with an error rather than ignoring `.gitignore`.
+  - **In a git repository:** all tracked files plus untracked files that aren't ignored, so `.gitignore` is respected. If git can't be run there, aisignoff stops with an error rather than ignoring `.gitignore`.
   - **Outside git:** every file below the root.
-  - **Always skipped:** `AIDECL.toml` itself and anything under `exclude`. Exclude the folder of committed AI reviews (`reviews/` by default, see CONTRIBUTING.md), since the reviews themselves need no declaration.
+  - **Always skipped:** `SIGNOFF.toml` itself (and `AIDECL.toml`, its old name) and anything under `exclude`. Exclude the folder of committed AI reviews (`reviews/` by default, see CONTRIBUTING.md), since the reviews themselves need no declaration.
 
 ## Inline tags
 
@@ -140,16 +144,16 @@ Three rules keep documentation from being mistaken for a declaration:
   - `%` in LaTeX;
   - `<!-- -->` in Markdown and HTML.
 
-  Fenced code blocks in Markdown are skipped. File types without a known comment syntax, such as `.txt`, `.csv`, `.json`, notebooks or `LICENSE`, are only declared through `AIDECL.toml`.
+  Fenced code blocks in Markdown are skipped. File types without a known comment syntax, such as `.txt`, `.csv`, `.json`, notebooks or `LICENSE`, are only declared through `SIGNOFF.toml`.
 - **Start of the line:** the comment must start the line. Only `*` continuation lines of a `/* */` comment may be indented, so indented examples in docstrings are ignored.
-- **A contiguous block with a valid level:** tag lines count only as a block of adjacent lines that contains a valid level line, such as `AI-Generation: G2` or `AI-Review: A0`. A comment that merely explains the keys, like `#   AI-Generation: G0-G3`, is ignored. `TODO` (a placeholder, e.g. left by `aidecl migrate` or an agent) also counts as a level here, so a block with an unfilled TODO is found and fails `lint`.
+- **A contiguous block with a valid level:** tag lines count only as a block of adjacent lines that contains a valid level line, such as `AI-Generation: G2` or `AI-Review: A0`. A comment that merely explains the keys, like `#   AI-Generation: G0-G3`, is ignored. `TODO` (a placeholder, e.g. left by `aisignoff migrate` or an agent) also counts as a level here, so a block with an unfilled TODO is found and fails `lint`.
 
-`aidecl annotate FILE … --inline` writes or updates these lines for you:
+`aisignoff annotate FILE … --inline` writes or updates these lines for you:
 - **Placement:** after a shebang, an encoding line, an XML declaration or (in Markdown) YAML front matter.
 - **The rest of the file stays untouched,** including line endings and a byte-order mark.
 - **Safety:** it refuses if the block wouldn't fit into the first 30 lines. It reads the result back and restores the file if the tags couldn't be read.
 
-**Precedence:** a file's inline tags win over `AIDECL.toml` ("closest"), unless the matching annotation sets `precedence = "override"`. This works per axis:
+**Precedence:** a file's inline tags win over `SIGNOFF.toml` ("closest"), unless the matching annotation sets `precedence = "override"`. This works per axis:
 - **The axes** are generation (`AI-Generation` with `Assisted-by`), human review (`Human-Review` with `Reviewed-by`) and AI review (`AI-Review` with `AI-Reviewed-by`).
 - **An axis counts as declared inline** when its level line is present. Any axis the inline block leaves out comes from the matching annotation.
 - **A name line on its own,** such as `Assisted-by` without `AI-Generation`, is an error.
@@ -158,22 +162,28 @@ Three rules keep documentation from being mistaken for a declaration:
 
 | Command | What it does |
 |---|---|
-| `aidecl init [-g G -H H -a A …]` | Create `AIDECL.toml`, optionally with a default for all files |
-| `aidecl annotate PATHS -g G -H H -a A [--assisted-by …] [--ai-reviewed-by …] --reviewed-by …` | Append an annotation (`--inline`: tag the files themselves) |
-| `aidecl lint [--strict]` | Fail if any file lacks a valid declaration, falls below the policy, or if no files were found (`--strict`: also on annotations that match nothing) |
-| `aidecl report [--files] [--json]` | Summary per axis, one line per file (with the problems), or JSON; invalid declarations count as "undeclared", as in the badges |
-| `aidecl badge [--out DIR] [--weight files\|lines]` | Write shields.io badges `aidecl-generation.json`, `aidecl-human-review.json` and `aidecl-ai-review.json` |
-| `aidecl migrate [--dry-run] [--from 2]` | Convert declarations of earlier versions, see below |
+| `aisignoff init [-g G -H H -a A …]` | Create `SIGNOFF.toml`, optionally with a default for all files |
+| `aisignoff annotate PATHS -g G -H H -a A [--assisted-by …] [--ai-reviewed-by …] --reviewed-by …` | Append an annotation (`--inline`: tag the files themselves) |
+| `aisignoff lint [--strict]` | Fail if any file lacks a valid declaration, falls below the policy, or if no files were found (`--strict`: also on annotations that match nothing) |
+| `aisignoff report [--files] [--json]` | Summary per axis, one line per file (with the problems), or JSON; invalid declarations count as "undeclared", as in the badges |
+| `aisignoff badge [--out DIR] [--weight files\|lines]` | Write shields.io badges `aisignoff-generation.json`, `aisignoff-human-review.json` and `aisignoff-ai-review.json` |
+| `aisignoff migrate [--dry-run] [--from 2]` | Convert declarations of earlier versions, see below |
 
-Use `--root DIR` before the command to run on another directory, e.g. `aidecl --root ../paper lint`.
+Use `--root DIR` before the command to run on another directory, e.g. `aisignoff --root ../paper lint`.
 
 Exit codes: `0` success, `1` problems found by `lint`, `2` usage or configuration errors.
 
 ## Migrating from earlier versions
 
-`aidecl migrate` converts `AIDECL.toml` and the inline tags to version 3, all or nothing. Without `AIDECL.toml`, inline tags with the old AI review scale need `--from 2`; `migrate` points this out when it finds `AI-Review: A-`. `--from 2` then creates a version-3 `AIDECL.toml` without annotations, which records that the tags are converted, so they're never shifted twice. Once `AIDECL.toml` is version 3, `--from 2` is refused.
+**From aidecl** (up to version 0.3.0). The tool, its command and its file were renamed: `aidecl` is now `aisignoff`, and `AIDECL.toml` is now `SIGNOFF.toml`. The keys, levels and inline tags stay the same.
+- **Reinstall:** `pipx uninstall aidecl && pipx install aisignoff` (or the same with pip).
+- **Rename the file:** `aisignoff migrate` renames `AIDECL.toml` to `SIGNOFF.toml` and keeps its content. If the file still uses version 1 or 2, it's converted in the same step, as described below. Commit the rename (`git add -A SIGNOFF.toml AIDECL.toml`).
+- **Until then,** aisignoff still reads `AIDECL.toml` and prints a warning. Having both files is an error.
+- **Badges** are now called `aisignoff-generation.json`, `aisignoff-human-review.json` and `aisignoff-ai-review.json`; update the URLs in your README (see "In CI" below).
 
-**From version 2** (AI review A-, A0–A3). The scale moved up by one, so only `AI-Review` (and `ai` in `[policy]`) changes. Comments and layout of `AIDECL.toml` are kept.
+**Between versions of the file format,** `aisignoff migrate` converts `SIGNOFF.toml` and the inline tags to version 3, all or nothing. Without `SIGNOFF.toml`, inline tags with the old AI review scale need `--from 2`; `migrate` points this out when it finds `AI-Review: A-`. `--from 2` then creates a version-3 `SIGNOFF.toml` without annotations, which records that the tags are converted, so they're never shifted twice. Once `SIGNOFF.toml` is version 3, `--from 2` is refused.
+
+**From version 2** (AI review A-, A0–A3). The scale moved up by one, so only `AI-Review` (and `ai` in `[policy]`) changes. Comments and layout of `SIGNOFF.toml` are kept.
 
 | Old | New |
 |---|---|
@@ -193,16 +203,16 @@ Exit codes: `0` success, `1` problems found by `lint`, `2` usage or configuratio
 | `Tested-by` | `Reviewed-by` |
 | `Verified-by` | `AI-Reviewed-by` |
 
-What the old levels don't say must be added by a person. Examples are the human review of a V1 file, or the AI review of an AI-written V0 file. `migrate` marks these with a `TODO` comment in `AIDECL.toml` and with a `TODO` value in inline tags (e.g. `# Human-Review: TODO`), and `lint` reports them until they're filled in. When converting version 1, comments in `AIDECL.toml` are not carried over.
+What the old levels don't say must be added by a person. Examples are the human review of a V1 file, or the AI review of an AI-written V0 file. `migrate` marks these with a `TODO` comment in `SIGNOFF.toml` and with a `TODO` value in inline tags (e.g. `# Human-Review: TODO`), and `lint` reports them until they're filled in. When converting version 1, comments in `SIGNOFF.toml` are not carried over.
 
 ## In CI
 
-The organisation provides a ready-made workflow (*Actions → New workflow → AI file declarations*). It runs `aidecl lint` on every push and pull request and publishes the badges to the `badges` branch:
+The organisation provides a ready-made workflow (*Actions → New workflow → AI file declarations*). It runs `aisignoff lint` on every push and pull request and publishes the badges to the `badges` branch:
 
 ```markdown
-![AI generation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/<repo>/badges/aidecl-generation.json)
-![Human review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/<repo>/badges/aidecl-human-review.json)
-![AI review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/<repo>/badges/aidecl-ai-review.json)
+![AI generation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/<repo>/badges/aisignoff-generation.json)
+![Human review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/<repo>/badges/aisignoff-human-review.json)
+![AI review](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/industrial-mathematics-group/<repo>/badges/aisignoff-ai-review.json)
 ```
 
 The badges turn red and show an "undeclared" share while files are missing a valid declaration.
@@ -212,5 +222,7 @@ The badges turn red and show an "undeclared" share while files are missing a val
 ```bash
 pip install -e . pytest
 pytest
-aidecl lint      # the tool declares its own files, too (see AIDECL.toml)
+aisignoff lint      # the tool declares its own files, too (see SIGNOFF.toml)
 ```
+
+**Releasing:** bump `version` in `pyproject.toml`, `src/aisignoff/__init__.py` and `uv.lock`, then publish a GitHub release with the tag `vX.Y.Z`. The *Publish to PyPI* workflow builds the package and uploads it through PyPI's trusted publishing, so no token is stored in the repository.

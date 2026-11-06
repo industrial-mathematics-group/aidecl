@@ -1,0 +1,42 @@
+version = 3
+exclude = ["reviews/**"]   # committed AI reviews (CONTRIBUTING.md) need no declaration
+
+[[annotations]]
+path = "**"
+AI-Generation = "G3"
+Human-Review = "H1"
+AI-Review = "A2"
+Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), new sessions without the generating conversation (reviews/)"]
+
+[[annotations]]
+path = "LICENSE"   # standard MIT text, added by Pascal
+AI-Generation = "G0"
+Human-Review = "H1"
+AI-Review = "A2"
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), new sessions without the generating conversation (reviews/)"]
+
+# Changed after the A2 reviews in reviews/05ff570.md (fixes for their findings): self-checked only.
+[[annotations]]
+path = ["README.md", "src/aisignoff/cli.py", "src/aisignoff/config.py", "src/aisignoff/model.py", "tests/test_aisignoff.py"]
+AI-Generation = "G3"
+Human-Review = "H1"
+AI-Review = "A1"
+Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
+
+# Rename aidecl -> aisignoff, SIGNOFF.toml with fallback to AIDECL.toml, PyPI publishing (0.4.0).
+# Written by Claude and only self-checked; the human review is still open.
+[[annotations]]
+path = [".github/workflows/ci.yml", ".github/workflows/publish.yml", "README.md", "pyproject.toml", "uv.lock",
+        "src/aisignoff/__init__.py", "src/aisignoff/cli.py", "src/aisignoff/config.py", "src/aisignoff/globbing.py",
+        "src/aisignoff/inline.py", "src/aisignoff/model.py", "src/aisignoff/project.py", "tests/test_aisignoff.py"]
+AI-Generation = "G3"
+Human-Review = "H1"
+AI-Review = "A1"
+Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
+AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]

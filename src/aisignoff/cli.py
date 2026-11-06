@@ -1,4 +1,4 @@
-"""Command-line interface: aidecl init | lint | report | annotate | badge | migrate."""
+"""Command-line interface: aisignoff init | lint | report | annotate | badge | migrate."""
 from __future__ import annotations
 
 import argparse
@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from . import __version__, inline
-from .config import FILENAME, VERSION, ConfigError, LegacyConfig, load, read_toml
+from .config import FILENAME, LEGACY_FILENAME, VERSION, ConfigError, LegacyConfig, config_path, load, read_toml
 from .globbing import escape
 from .model import (AI, AI_REVIEWED, AIR, ASSISTED, GEN, GENERATION, HUM, HUMAN, KEYS, LIST_KEYS, REVIEWED,
                     TODO, Declaration, Policy, canonical_key, validate)
@@ -19,9 +19,9 @@ from .project import Project, ProjectError, list_files
 SPEC_URL = ("https://github.com/industrial-mathematics-group/.github/blob/main/.github/"
             "CONTRIBUTING.md#ai-assisted-contributions")
 AXIS_INFO = (  # key, short, title, levels, badge file, colour
-    (GEN, "G", "Generation", GENERATION, "aidecl-generation.json", "4063D8"),
-    (HUM, "H", "Human review", HUMAN, "aidecl-human-review.json", "389826"),
-    (AIR, "A", "AI review", AI, "aidecl-ai-review.json", "9558B2"),
+    (GEN, "G", "Generation", GENERATION, "aisignoff-generation.json", "4063D8"),
+    (HUM, "H", "Human review", HUMAN, "aisignoff-human-review.json", "389826"),
+    (AIR, "A", "AI review", AI, "aisignoff-ai-review.json", "9558B2"),
 )
 
 
@@ -95,6 +95,9 @@ def cmd_init(args) -> int:
     target = root / FILENAME
     if target.exists():
         raise UsageError(f"{target} already exists")
+    if (root / LEGACY_FILENAME).exists():
+        raise UsageError(f"{root / LEGACY_FILENAME} already exists (the old name of {FILENAME}); "
+                         "run 'aisignoff migrate' to rename it")
     lines = [
         "# AI declarations for this repository: generation (G0-G3), human review (H0-H3)",
         "# and AI review (A0-A3).",
@@ -156,7 +159,7 @@ def cmd_lint(args) -> int:
         if len(paths) > args.max_files:
             print(f"    … and {len(paths) - args.max_files} more")
     for index in unused:
-        print(f"{'✗' if args.strict else '!'} {FILENAME} annotation [{index}] matches no file")
+        print(f"{'✗' if args.strict else '!'} {project.config.path.name} annotation [{index}] matches no file")
 
     bad = sum(1 for r in results if r.errors)
     print()
@@ -238,8 +241,11 @@ def _pattern(root: Path, arg: str) -> str:
 
 
 def _append_annotation(root: Path, patterns: list[str], values: dict, precedence: str | None,
-                       comments: list[str] = ()) -> None:
-    target = root / FILENAME
+                       comments: list[str] = ()) -> Path:
+    try:
+        target = config_path(root)  # AIDECL.toml in a repository that isn't migrated yet
+    except ConfigError as e:
+        raise UsageError(str(e))
     old = target.read_text(encoding="utf-8") if target.exists() else None
     text = old if old is not None else f"version = {VERSION}\n"
     if not text.endswith("\n"):
@@ -251,13 +257,14 @@ def _append_annotation(root: Path, patterns: list[str], values: dict, precedence
     block += [f"{k} = {_toml_value(v)}" for k, v in values.items()]
     target.write_text(text + "\n".join(block) + "\n", encoding="utf-8")
     try:
-        load(root)  # make sure the result is still a valid AIDECL.toml
+        load(root)  # make sure the result is still a valid SIGNOFF.toml
     except ConfigError as e:
         if old is None:
             target.unlink()
         else:
             target.write_text(old, encoding="utf-8")
-        raise UsageError(f"{e}; {FILENAME} was left unchanged")
+        raise UsageError(f"{e}; {target.name} was left unchanged")
+    return target
 
 
 def cmd_annotate(args) -> int:
@@ -269,30 +276,30 @@ def cmd_annotate(args) -> int:
 
     if args.inline:
         if args.precedence:
-            raise UsageError("--precedence only applies to AIDECL.toml, not to --inline")
+            raise UsageError("--precedence only applies to SIGNOFF.toml, not to --inline")
         status = 0
         for arg in args.paths:
             path = Path(arg)
             if not path.is_file():
-                print(f"aidecl annotate: {arg} does not exist or is not a file", file=sys.stderr)
+                print(f"aisignoff annotate: {arg} does not exist or is not a file", file=sys.stderr)
                 status = 1
                 continue
             rel = os.path.relpath(_real(arg), os.path.realpath(root))
             if rel == ".." or rel.startswith(".." + os.sep) or os.path.isabs(rel):
-                print(f"aidecl annotate: {arg} is outside the project root {root}", file=sys.stderr)
+                print(f"aisignoff annotate: {arg} is outside the project root {root}", file=sys.stderr)
                 status = 1
                 continue
             try:
                 inline.write(path, values)
                 print(f"Tagged {path}")
             except (ValueError, OSError, UnicodeDecodeError) as e:
-                print(f"aidecl annotate: {e}", file=sys.stderr)
+                print(f"aisignoff annotate: {e}", file=sys.stderr)
                 status = 1
         return status
 
     patterns = [_pattern(root, a) for a in args.paths]
-    _append_annotation(root, patterns, values, args.precedence)
-    print(f"Added an annotation for {', '.join(patterns)} to {root / FILENAME}")
+    target = _append_annotation(root, patterns, values, args.precedence)
+    print(f"Added an annotation for {', '.join(patterns)} to {target}")
     return 0
 
 
@@ -426,8 +433,8 @@ def _split_comment(line: str) -> tuple[str, str]:
     return line, ""
 
 
-def migrate_toml_v2(text: str, data: dict) -> tuple[str, list[str], int]:
-    """Rewrite a version-2 AIDECL.toml line by line, keeping comments and layout.
+def migrate_toml_v2(text: str, data: dict, name: str = FILENAME) -> tuple[str, list[str], int]:
+    """Rewrite a version-2 SIGNOFF.toml line by line, keeping comments and layout.
     Returns (new text, notes, number of TODOs). Raises UsageError if the layout is too unusual
     to convert safely (checked by comparing the parsed result with the expected one)."""
     import copy
@@ -498,10 +505,10 @@ def migrate_toml_v2(text: str, data: dict) -> tuple[str, list[str], int]:
         ok = False
     if not ok:
         raise UsageError(
-            f"{FILENAME} is laid out in a way 'migrate' can't convert safely. Nothing was changed. "
+            f"{name} is laid out in a way 'migrate' can't convert safely. Nothing was changed. "
             "Rewrite the unusual parts as plain lines (one [[annotations]] table per annotation, "
             "AI-Review = \"...\" and ai = \"...\" on their own lines), keep version = 2 and the old levels, "
-            "then run 'aidecl migrate' again. It converts AIDECL.toml and the inline tags together")
+            "then run 'aisignoff migrate' again. It converts SIGNOFF.toml and the inline tags together")
     return new_text, notes, todos
 
 
@@ -527,33 +534,35 @@ def cmd_migrate(args) -> int:
     changes = []
     todos = 0
 
-    # AIDECL.toml
+    # SIGNOFF.toml, or AIDECL.toml from before the rename (converted and renamed to SIGNOFF.toml)
     data = None
     try:
+        source = config_path(root)
         data = read_toml(root)
     except ConfigError as e:
         raise UsageError(str(e))
+    legacy = source.name == LEGACY_FILENAME
     new_text = None
     warnings, notes = [], []
     version = data.get("version") if data is not None else None
     if version == 1:
         lines = [
-            "# AI declarations (migrated from version 1 by 'aidecl migrate').",
+            "# AI declarations (migrated from version 1 by 'aisignoff migrate').",
             f"# Scheme: {SPEC_URL}",
             f"version = {VERSION}",
         ]
         if data.get("exclude"):
             lines += ["", f"exclude = {_toml_value(list(data['exclude']))}"]
         if "policy" in data:
-            warnings.append(f"{FILENAME}: version 1 had no [policy]; the table was dropped, add it again by hand")
+            warnings.append(f"{source.name}: version 1 had no [policy]; the table was dropped, add it again by hand")
         old_keys = (GEN, ASSISTED, "AI-Verification", "Verified-by", "Tested-by")
         for i, table in enumerate(data.get("annotations", []), start=1):
             if not isinstance(table, dict) or "path" not in table:
-                raise UsageError(f"{FILENAME} annotation [{i}] has no 'path'; fix it, then run migrate again")
+                raise UsageError(f"{source.name} annotation [{i}] has no 'path'; fix it, then run migrate again")
             rest = {k: v for k, v in table.items() if k not in ("path", "precedence")}
             for k in rest:
                 if canonical_key(k, old_keys) is None:
-                    warnings.append(f"{FILENAME} annotation [{i}]: key '{k}' is not part of the scheme and was dropped")
+                    warnings.append(f"{source.name} annotation [{i}]: key '{k}' is not part of the scheme and was dropped")
             values, todo = migrate_values(rest)
             todos += bool(todo)
             lines.append("")
@@ -567,19 +576,23 @@ def cmd_migrate(args) -> int:
         new_text = "\n".join(lines) + "\n"
         changes.append(f"{FILENAME}: version 1 -> {VERSION}")
     elif version == 2:
-        new_text, toml_notes, n = migrate_toml_v2((root / FILENAME).read_bytes().decode("utf-8"), data)
+        new_text, toml_notes, n = migrate_toml_v2(source.read_bytes().decode("utf-8"), data, source.name)
         notes += toml_notes
         todos += n
         changes.append(f"{FILENAME}: version 2 -> {VERSION}")
+    if legacy:
+        if new_text is None:
+            new_text = source.read_bytes().decode("utf-8")  # already version 3: only the name changes
+        changes.insert(0, f"{LEGACY_FILENAME} -> {FILENAME}")
 
     # Inline tags. Blocks with the V0-V3 keys are always converted. Blocks with G/H/A keys use the
-    # old AI review scale when AIDECL.toml is version 2; without AIDECL.toml, '--from 2' says so.
-    # Afterwards AIDECL.toml is version 3 (created if needed), which records that inline tags
+    # old AI review scale when SIGNOFF.toml is version 2; without SIGNOFF.toml, '--from 2' says so.
+    # Afterwards SIGNOFF.toml is version 3 (created if needed), which records that inline tags
     # are on the new scale, so running migrate again never shifts them twice.
     if args.from_version == 2 and data is not None and version != 2:
-        raise UsageError(f"{FILENAME} is version {version}, so inline tags are already read on its scale "
+        raise UsageError(f"{source.name} is version {version}, so inline tags are already read on its scale "
                          "(running --from 2 here could shift tags a second time). --from 2 is only for repositories "
-                         "without AIDECL.toml. Convert remaining old tags by hand: A- -> A0, A0 -> A1, A1 -> A2")
+                         "without SIGNOFF.toml. Convert remaining old tags by hand: A- -> A0, A0 -> A1, A1 -> A2")
     from_v2 = version == 2 or args.from_version == 2
     create_toml = args.from_version == 2 and data is None
     inline_updates = []
@@ -590,7 +603,7 @@ def cmd_migrate(args) -> int:
     except ProjectError as e:
         raise UsageError(str(e))
     for f in files:
-        if f == FILENAME:
+        if f in (FILENAME, LEGACY_FILENAME):
             continue
         found = inline.parse_values(root / f)
         if found is None:
@@ -607,7 +620,7 @@ def cmd_migrate(args) -> int:
         if is_v1:
             values, todo = migrate_values(raw)
             # explicit TODO markers: an inline axis without its level line would otherwise be
-            # filled in from AIDECL.toml, which would claim a review that never happened
+            # filled in from SIGNOFF.toml, which would claim a review that never happened
             for key in todo:
                 values[key] = [TODO] if key in LIST_KEYS else TODO
         else:
@@ -629,7 +642,7 @@ def cmd_migrate(args) -> int:
         raise UsageError(f"{', '.join(several)}: more than one inline declaration block (an example of the "
                          "format counts too). Leave one block per file, then run migrate again. Nothing was changed")
     if create_toml and inline_updates:
-        new_text = f"# Created by 'aidecl migrate --from 2': inline tags use the AI review scale of version {VERSION}.\nversion = {VERSION}\n"
+        new_text = f"# Created by 'aisignoff migrate --from 2': inline tags use the AI review scale of version {VERSION}.\nversion = {VERSION}\n"
         changes.insert(0, f"{FILENAME}: created (version {VERSION})")
 
     for w in warnings:
@@ -639,9 +652,9 @@ def cmd_migrate(args) -> int:
         if seen_legacy_none:
             print(f"{len(seen_legacy_none)} file(s) use 'AI-Review: A-' from version 2, e.g. {seen_legacy_none[0]}.")
             if data is None:
-                print("If all inline tags still use the old scale, run 'aidecl migrate --from 2'.")
+                print("If all inline tags still use the old scale, run 'aisignoff migrate --from 2'.")
             else:
-                print(f"{FILENAME} is already version {version}: convert the old tags in these files by hand "
+                print(f"{source.name} is already version {version}: convert the old tags in these files by hand "
                       "(A- -> A0, A0 -> A1, A1 -> A2).")
         return 0
     if args.dry_run:
@@ -650,7 +663,7 @@ def cmd_migrate(args) -> int:
         for n in notes:
             print(f"note: {n}")
         return 0
-    # All or nothing: inline tags first (restored if any fails), AIDECL.toml last, so a
+    # All or nothing: inline tags first (restored if any fails), SIGNOFF.toml last, so a
     # partly migrated repository can't be migrated a second time.
     backups = {}
     try:
@@ -665,6 +678,9 @@ def cmd_migrate(args) -> int:
     if new_text is not None:
         target = root / FILENAME
         old_bytes = target.read_bytes() if target.exists() else None
+        legacy_bytes = source.read_bytes() if legacy else None
+        if legacy:
+            source.unlink()
         target.write_bytes(new_text.encode("utf-8"))
         try:
             load(root)
@@ -673,6 +689,8 @@ def cmd_migrate(args) -> int:
                 target.unlink()
             else:
                 target.write_bytes(old_bytes)
+            if legacy_bytes is not None:
+                source.write_bytes(legacy_bytes)
             for path, content in backups.items():
                 path.write_bytes(content)
             raise UsageError(f"the converted {FILENAME} would be invalid ({e}); fix the old file first. "
@@ -683,7 +701,7 @@ def cmd_migrate(args) -> int:
         print(f"note: {n}")
     if todos:
         print("\nSome declarations need information the old levels don't contain (marked TODO).")
-        print("'aidecl lint' fails until they are filled in.")
+        print("'aisignoff lint' fails until they are filled in.")
     return 0
 
 
@@ -702,10 +720,10 @@ def _add_values(p: argparse.ArgumentParser, required: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="aidecl", description="Declare and check AI generation (G0-G3), "
+    parser = argparse.ArgumentParser(prog="aisignoff", description="Declare and check AI generation (G0-G3), "
                                      "human review (H0-H3) and AI review (A0-A3) of the files in a repository.")
-    parser.add_argument("--version", action="version", version=f"aidecl {__version__}")
-    parser.add_argument("--root", default=".", help="project root containing AIDECL.toml (default: .)")
+    parser.add_argument("--version", action="version", version=f"aisignoff {__version__}")
+    parser.add_argument("--root", default=".", help="project root containing SIGNOFF.toml (default: .)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("init", help=f"create {FILENAME}")
@@ -737,7 +755,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("migrate", help="convert declarations of versions 1 (V0-V3) and 2 (A-, A0-A3)")
     p.add_argument("--dry-run", action="store_true", help="only show what would change")
     p.add_argument("--from", dest="from_version", type=int, choices=[2],
-                   help="without AIDECL.toml: treat inline G/H/A tags as version 2 and create a version-3 AIDECL.toml "
+                   help="without SIGNOFF.toml: treat inline G/H/A tags as version 2 and create a version-3 SIGNOFF.toml "
                         "that records the conversion")
     p.set_defaults(func=cmd_migrate)
 
@@ -745,7 +763,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except UsageError as e:
-        print(f"aidecl {args.command}: {e}", file=sys.stderr)
+        print(f"aisignoff {args.command}: {e}", file=sys.stderr)
         return 2
 
 

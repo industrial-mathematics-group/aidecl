@@ -184,7 +184,7 @@ def parse(path: Path) -> Declaration | None:
         return None
     values, problems = found
     if any(k in values for k in LEGACY_KEYS):
-        problems.append("inline tags use the old V levels (AI-Verification); run 'aidecl migrate'")
+        problems.append("inline tags use the old V levels (AI-Verification); run 'aisignoff migrate'")
     d = Declaration.from_mapping(values, source="inline")
     d.problems.extend(problems)
     return d
@@ -235,10 +235,10 @@ def write(path: Path, values: dict) -> None:
     """
     style = comment_style(path)
     if style is None:
-        raise ValueError(f"{path}: no known comment syntax; declare it in AIDECL.toml instead")
+        raise ValueError(f"{path}: no known comment syntax; declare it in SIGNOFF.toml instead")
     raw = path.read_bytes()
     if b"\x00" in raw[:16384]:
-        raise ValueError(f"{path}: binary file; declare it in AIDECL.toml instead")
+        raise ValueError(f"{path}: binary file; declare it in SIGNOFF.toml instead")
     text = raw.decode("utf-8")
     bom = BOM if text.startswith(BOM) else ""
     text = text.removeprefix(BOM)
@@ -262,7 +262,7 @@ def write(path: Path, values: dict) -> None:
     n_tags = len(render(style, values))
     if at + n_tags > HEADER_LINES:
         raise ValueError(f"{path}: the declaration would not fit into the first {HEADER_LINES} lines "
-                         "(long front matter?); declare it in AIDECL.toml instead")
+                         "(long front matter?); declare it in SIGNOFF.toml instead")
     pieces[at:at] = new
     original = raw
     path.write_bytes((bom + "".join(pieces)).encode("utf-8"))
@@ -272,4 +272,4 @@ def write(path: Path, values: dict) -> None:
     if check is None or check.as_dict() != expected or check.problems:
         path.write_bytes(original)
         raise ValueError(f"{path}: the written header could not be read back; file left unchanged. "
-                         "Declare it in AIDECL.toml instead")
+                         "Declare it in SIGNOFF.toml instead")
