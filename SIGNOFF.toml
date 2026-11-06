@@ -7,7 +7,7 @@ AI-Generation = "G3"
 Human-Review = "H1"
 AI-Review = "A2"
 Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
-Reviewed-by = ["Pascal Jung"]
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
 AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), new sessions without the generating conversation (reviews/)"]
 
 [[annotations]]
@@ -15,7 +15,7 @@ path = "LICENSE"   # standard MIT text, added by Pascal
 AI-Generation = "G0"
 Human-Review = "H1"
 AI-Review = "A2"
-Reviewed-by = ["Pascal Jung"]
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
 AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), new sessions without the generating conversation (reviews/)"]
 
 # Changed after the A2 reviews in reviews/05ff570.md (fixes for their findings): self-checked only.
@@ -25,7 +25,7 @@ AI-Generation = "G3"
 Human-Review = "H1"
 AI-Review = "A1"
 Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
-Reviewed-by = ["Pascal Jung"]
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
 AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
 
 # Rename aidecl -> aisignoff, SIGNOFF.toml with fallback to AIDECL.toml, PyPI publishing (0.4.0).
@@ -35,8 +35,8 @@ path = [".github/workflows/ci.yml", ".github/workflows/publish.yml", "README.md"
         "src/aisignoff/__init__.py", "src/aisignoff/cli.py", "src/aisignoff/config.py", "src/aisignoff/globbing.py",
         "src/aisignoff/inline.py", "src/aisignoff/model.py", "src/aisignoff/project.py", "tests/test_aisignoff.py"]
 AI-Generation = "G3"
-Human-Review = "TODO"
+Human-Review = "H1"
 AI-Review = "A1"
 Assisted-by = ["Claude Opus 5.5 (Anthropic)"]
-Reviewed-by = ["Pascal Jung"]
+Reviewed-by = ["blhackslash <dev@blackslash.win>"]
 AI-Reviewed-by = ["Claude Opus 5.5 (Anthropic), self-check by the generating session"]
